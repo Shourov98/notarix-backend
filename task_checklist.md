@@ -85,7 +85,7 @@ Use this checklist to track project completion.
 
 # 6. Notary Management Module
 
-- [ ] Build Add Notary form
+- [x] Build Add Notary form
 - [x] Add personal information fields
 - [x] Add address information fields
 - [x] Add commission details fields
