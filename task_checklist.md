@@ -97,7 +97,7 @@ Use this checklist to track project completion.
 - [x] Create notary API
 - [x] Auto-generate password
 - [x] Set passwordResetRequired to true
-- [ ] Send invite email
+- [x] Send invite email
 - [x] Build notary profile page
 - [x] Build verified notary filtering logic
 
