@@ -2,10 +2,15 @@ import { Router } from "express";
 import { mutateStore, readStore } from "../../store.js";
 import { requireAdminAuth } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
+import { validate } from "../../shared/middleware/validate.js";
+import {
+  createRequestSchema,
+  rejectRequestSchema,
+} from "./requests.schemas.js";
 
 export const requestsRouter = Router();
 
-requestsRouter.post("/requests", async (req, res) => {
+requestsRouter.post("/requests", validate(createRequestSchema), async (req, res) => {
   const {
     name,
     email,
@@ -88,7 +93,7 @@ requestsRouter.patch("/admin/requests/:id/approve", requireAdminAuth, async (req
   return ok(res, { requestId, status: "Approved" }, "Request approved successfully.");
 });
 
-requestsRouter.patch("/admin/requests/:id/reject", requireAdminAuth, async (req, res) => {
+requestsRouter.patch("/admin/requests/:id/reject", requireAdminAuth, validate(rejectRequestSchema), async (req, res) => {
   const requestId = req.params.id;
   const result = await mutateStore((store) => {
     const requestItem = store.requests.find((item) => item.id === requestId);
