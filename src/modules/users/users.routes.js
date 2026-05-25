@@ -8,6 +8,7 @@ import {
 } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
+import { queueEmail } from "../../shared/notifications/email.service.js";
 import { hashPassword } from "../../shared/security/password.js";
 import { upload } from "../../shared/storage/upload.js";
 
@@ -148,6 +149,25 @@ usersRouter.post(
 
     await mutateStore((store) => {
       store.users.unshift(newUser);
+    });
+
+    await queueEmail({
+      to: email,
+      subject: "Your Notarix client account is ready",
+      text: [
+        `Hello ${name},`,
+        "",
+        "Your Notarix client account has been created.",
+        `Temporary password: ${temporaryPassword}`,
+        "Please sign in and reset your password on first login.",
+      ].join("\n"),
+      html: `
+        <p>Hello ${name},</p>
+        <p>Your Notarix client account has been created.</p>
+        <p><strong>Temporary password:</strong> ${temporaryPassword}</p>
+        <p>Please sign in and reset your password on first login.</p>
+      `,
+      category: "client-invite",
     });
 
     return ok(
