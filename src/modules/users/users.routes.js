@@ -1,10 +1,28 @@
 import { Router } from "express";
+import crypto from "node:crypto";
+import { z } from "zod";
 import { mutateStore, readStore } from "../../store.js";
-import { requireAdminAuth } from "../../shared/http/auth-middleware.js";
+import {
+  requireAdminAuth,
+  requireAdminRole,
+} from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
+import { validate } from "../../shared/middleware/validate.js";
+import { hashPassword } from "../../shared/security/password.js";
 import { upload } from "../../shared/storage/upload.js";
 
 export const usersRouter = Router();
+
+const adminCreateSchema = z.object({
+  body: z.object({
+    name: z.string().min(2),
+    email: z.string().email(),
+    role: z.enum(["admin", "super_admin"]).default("admin"),
+    phone: z.string().min(7).optional(),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
 
 usersRouter.get("/admin/users", requireAdminAuth, async (req, res) => {
   const store = await readStore();
@@ -113,6 +131,62 @@ usersRouter.post("/admin/users/notary", requireAdminAuth, async (req, res) => {
     201
   );
 });
+
+usersRouter.post(
+  "/admin/users/admin",
+  requireAdminAuth,
+  requireAdminRole("super_admin"),
+  validate(adminCreateSchema),
+  async (req, res) => {
+    const store = await readStore();
+    const email = String(req.body.email || "").trim().toLowerCase();
+
+    const existingAdmin = store.admins.find((item) => item.email === email);
+
+    if (existingAdmin) {
+      return fail(res, 409, "ADMIN_ALREADY_EXISTS", "An admin with that email already exists.");
+    }
+
+    const temporaryPassword = crypto.randomBytes(6).toString("base64url");
+    const passwordHash = await hashPassword(temporaryPassword);
+
+    const newAdmin = {
+      id: `admin-${Date.now()}`,
+      name: req.body.name.trim(),
+      email,
+      passwordHash,
+      role: req.body.role,
+      isVerified: true,
+      passwordResetRequired: true,
+      phone: req.body.phone || null,
+      avatar: "/profile.jpg",
+      status: "Active",
+      forgotOtp: null,
+      forgotOtpVerified: false,
+      refreshToken: null,
+      lastSignInAt: null,
+      createdBy: req.admin.id,
+      createdAt: new Date().toISOString(),
+    };
+
+    await mutateStore((draft) => {
+      draft.admins.push(newAdmin);
+    });
+
+    return ok(
+      res,
+      {
+        adminId: newAdmin.id,
+        email: newAdmin.email,
+        role: newAdmin.role,
+        passwordResetRequired: true,
+        temporaryPassword,
+      },
+      "Admin created successfully.",
+      201
+    );
+  }
+);
 
 usersRouter.patch("/admin/users/:id/status", requireAdminAuth, async (req, res) => {
   const nextStatus = String(req.body?.status || "");

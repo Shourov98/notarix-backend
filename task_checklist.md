@@ -55,7 +55,7 @@ Use this checklist to track project completion.
 
 - [x] Build Super Admin dashboard
 - [x] Build Admin dashboard
-- [ ] Build admin creation API
+- [x] Build admin creation API
 - [x] Build admin management page
 - [x] Build user table with filters
 - [x] Build user status update API
