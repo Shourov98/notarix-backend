@@ -15,7 +15,7 @@ Use this checklist to track project completion.
 - [x] Setup validation middleware
 - [x] Setup file upload storage
 - [x] Setup role-based middleware
-- [ ] Setup Socket.IO server
+- [x] Setup Socket.IO server
 
 ---
 

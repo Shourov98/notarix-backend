@@ -19,5 +19,9 @@ export const config = {
   mongodbOptional: process.env.MONGODB_OPTIONAL !== "false",
   maxFileSizeMb: resolveNumber(process.env.MAX_FILE_SIZE_MB, 25),
   uploadTmpDir: process.env.UPLOAD_TMP_DIR || "tmp/uploads",
+  socketCorsOrigin: (process.env.SOCKET_CORS_ORIGIN || "http://localhost:3000,http://localhost:5173")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
   dataFilePath: path.resolve(process.cwd(), "data", "store.json"),
 };
