@@ -96,7 +96,7 @@ Use this checklist to track project completion.
 - [ ] Mark missing documents as Missing
 - [x] Create notary API
 - [x] Auto-generate password
-- [ ] Set passwordResetRequired to true
+- [x] Set passwordResetRequired to true
 - [ ] Send invite email
 - [x] Build notary profile page
 - [x] Build verified notary filtering logic
