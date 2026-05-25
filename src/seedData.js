@@ -15,6 +15,22 @@ export const seedData = {
       refreshToken: null,
       lastSignInAt: "2026-05-24T09:42:00.000Z",
     },
+    {
+      id: "admin-002",
+      name: "Maya Collins",
+      email: "maya.admin@notarix.io",
+      passwordHash: "$2b$10$M20jC2/XKQ7n3A6Q4mNaPONfN2nR2ps5V6QnBrXQJQFhKnK0sZk1K",
+      role: "admin",
+      isVerified: true,
+      passwordResetRequired: false,
+      phone: "+1 (555) 987-6543",
+      avatar: "/profile.jpg",
+      status: "Active",
+      forgotOtp: null,
+      forgotOtpVerified: false,
+      refreshToken: null,
+      lastSignInAt: "2026-05-23T14:10:00.000Z",
+    },
   ],
   requests: [
     {

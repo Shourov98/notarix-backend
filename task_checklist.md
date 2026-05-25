@@ -54,7 +54,7 @@ Use this checklist to track project completion.
 # 4. Admin & Super Admin Module
 
 - [x] Build Super Admin dashboard
-- [ ] Build Admin dashboard
+- [x] Build Admin dashboard
 - [ ] Build admin creation API
 - [x] Build admin management page
 - [x] Build user table with filters

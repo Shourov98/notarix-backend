@@ -47,18 +47,22 @@ const buildDashboardStats = ({ role, metrics }) => {
   }
 
   return [
-    { label: "Total Orders", value: String(metrics.totalOrders), change: "+12%", icon: "FileText" },
-    { label: "Active Orders", value: String(metrics.activeOrders), change: "+5%", icon: "ClipboardCheck" },
-    { label: "Completed", value: String(metrics.completedOrders), change: "+8%", icon: "ShieldCheck" },
     {
-      label: "Pending Orders",
-      value: String(metrics.pendingOrders),
-      change: "-2%",
-      icon: "Gauge",
-      tone: "danger",
+      label: "Orders Requiring Review",
+      value: String(metrics.pendingOrders + metrics.pendingApprovals),
+      change: "+6%",
+      icon: "ShieldAlert",
     },
-    { label: "Total Revenue", value: "$142k", change: "+15%", icon: "CircleDollarSign" },
-    { label: "Total Notaries", value: String(metrics.totalNotaries), change: "+3%", icon: "Users" },
+    { label: "Active Orders", value: String(metrics.activeOrders), change: "+5%", icon: "ClipboardCheck" },
+    { label: "Completed Orders", value: String(metrics.completedOrders), change: "+8%", icon: "ShieldCheck" },
+    {
+      label: "Pending Documents",
+      value: String(metrics.pendingDocuments),
+      change: "+3%",
+      icon: "FileText",
+    },
+    { label: "Open Support", value: String(metrics.openSupportTickets), change: "-1%", icon: "MessageSquare" },
+    { label: "Verified Notaries", value: String(metrics.verifiedNotaries), change: "+3%", icon: "Users" },
   ];
 };
 
@@ -97,6 +101,12 @@ export const summarizeAdminConsole = (store, currentAdmin) => {
     pendingDocuments: store.documents.filter((item) => item.status === "Pending").length,
     verifiedDocuments: store.documents.filter((item) => item.status === "Verified").length,
     rejectedDocuments: store.documents.filter((item) => item.status === "Rejected").length,
+    verifiedNotaries: store.users.filter(
+      (item) => item.role === "Notary" && item.verification === "Approved"
+    ).length,
+    openSupportTickets: store.supportTickets.filter((item) =>
+      ["Open", "In Progress"].includes(item.status)
+    ).length,
   };
 
   return {
