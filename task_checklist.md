@@ -8,7 +8,7 @@ Use this checklist to track project completion.
 
 - [x] Create frontend project
 - [x] Create backend project
-- [ ] Setup MongoDB connection
+- [x] Setup MongoDB connection
 - [x] Setup environment variables
 - [x] Setup API base structure
 - [ ] Setup error handler middleware

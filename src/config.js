@@ -14,5 +14,8 @@ export const config = {
   adminAppUrl: process.env.ADMIN_APP_URL || "http://localhost:5173",
   tokenSecret: process.env.JWT_ACCESS_SECRET || "notarix-dev-access-secret",
   refreshSecret: process.env.JWT_REFRESH_SECRET || "notarix-dev-refresh-secret",
+  mongodbUri: process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/notarix",
+  mongodbDbName: process.env.MONGODB_DB_NAME || "notarix",
+  mongodbOptional: process.env.MONGODB_OPTIONAL !== "false",
   dataFilePath: path.resolve(process.cwd(), "data", "store.json"),
 };
