@@ -70,6 +70,17 @@ const clientCreateSchema = z.object({
   params: z.object({}).passthrough(),
 });
 
+const userDocumentStatusSchema = z.object({
+  body: z.object({
+    status: z.enum(["Pending", "Verified", "Rejected"]),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({
+    id: z.string().min(1),
+    documentId: z.string().min(1),
+  }),
+});
+
 const createDocumentRecord = (document) => ({
   id: document.id || `doc-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
   title: document.title,
@@ -399,3 +410,38 @@ usersRouter.get("/admin/users/:id/documents", requireAdminAuth, async (req, res)
 
   return ok(res, user.requiredDocuments || []);
 });
+
+usersRouter.patch(
+  "/admin/users/:id/documents/:documentId/status",
+  requireAdminAuth,
+  validate(userDocumentStatusSchema),
+  async (req, res) => {
+    const updated = await mutateStore((store) => {
+      const user = store.users.find((item) => item.id === req.params.id);
+      if (!user) {
+        return null;
+      }
+
+      const document = (user.requiredDocuments || []).find(
+        (item) => item.id === req.params.documentId
+      );
+
+      if (!document) {
+        return false;
+      }
+
+      document.status = req.body.status;
+      return user;
+    });
+
+    if (updated === null) {
+      return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+    }
+
+    if (updated === false) {
+      return fail(res, 404, "DOCUMENT_NOT_FOUND", "Document not found.");
+    }
+
+    return ok(res, updated.requiredDocuments || [], "Document status updated.");
+  }
+);
