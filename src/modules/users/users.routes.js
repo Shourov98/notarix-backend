@@ -79,6 +79,22 @@ const createDocumentRecord = (document) => ({
   size: document.size,
 });
 
+const upsertRequiredDocument = (documents, nextDocument) => {
+  const existingIndex = documents.findIndex(
+    (item) => item.id === nextDocument.id || item.title === nextDocument.title
+  );
+
+  if (existingIndex === -1) {
+    documents.push(nextDocument);
+    return;
+  }
+
+  documents[existingIndex] = {
+    ...documents[existingIndex],
+    ...nextDocument,
+  };
+};
+
 usersRouter.get("/admin/users", requireAdminAuth, async (req, res) => {
   const store = await readStore();
   const search = String(req.query.search || "").trim().toLowerCase();
@@ -334,21 +350,34 @@ usersRouter.post(
   upload.array("documents", 5),
   async (req, res) => {
     const files = req.files || [];
+    const rawTitles = req.body?.documentTitles;
+    const documentTitles = Array.isArray(rawTitles)
+      ? rawTitles
+      : rawTitles
+        ? [rawTitles]
+        : [];
     const updated = await mutateStore((store) => {
       const user = store.users.find((item) => item.id === req.params.id);
       if (!user) {
         return null;
       }
 
-      const nextDocuments = files.map((file) => ({
-        title: file.originalname,
-        status: "Pending",
-        file: file.filename,
-        mimeType: file.mimetype,
-        size: file.size,
-      }));
+      const existingDocuments = [...(user.requiredDocuments || [])];
+      files.forEach((file, index) => {
+        const title = documentTitles[index] || file.originalname;
+        upsertRequiredDocument(
+          existingDocuments,
+          createDocumentRecord({
+            title,
+            status: "Pending",
+            file: file.filename,
+            mimeType: file.mimetype,
+            size: file.size,
+          })
+        );
+      });
 
-      user.requiredDocuments = [...(user.requiredDocuments || []), ...nextDocuments];
+      user.requiredDocuments = existingDocuments;
       return user;
     });
 

@@ -72,7 +72,7 @@ Use this checklist to track project completion.
 - [x] Add address fields
 - [x] Add primary contact fields
 - [x] Add secondary contact fields
-- [ ] Add required document upload section
+- [x] Add required document upload section
 - [ ] Mark uploaded documents as Verified
 - [ ] Mark missing documents as Missing
 - [x] Create client API
