@@ -1,8 +1,11 @@
 import { Router } from "express";
 import {
   changeAdminPassword,
+  firstLoginResetPassword,
+  getCurrentAdmin,
   issueForgotPasswordOtp,
   loginAdmin,
+  logoutAdmin,
   refreshAdminSession,
   resendForgotPasswordOtp,
   resetAdminPassword,
@@ -14,7 +17,9 @@ import { validate } from "../../shared/middleware/validate.js";
 import {
   changePasswordSchema,
   emailSchema,
+  firstLoginResetSchema,
   loginSchema,
+  logoutSchema,
   refreshSchema,
   resetPasswordSchema,
   verifyOtpSchema,
@@ -32,6 +37,15 @@ authRouter.post("/admin/auth/login", validate(loginSchema), async (req, res) => 
   }
 
   return ok(res, authPayload, "Login successful");
+});
+
+authRouter.post("/admin/auth/logout", requireAdminAuth, validate(logoutSchema), async (req, res) => {
+  await logoutAdmin({
+    adminId: req.admin.id,
+    refreshToken: req.body?.refreshToken,
+  });
+
+  return ok(res, { ok: true }, "Logout successful.");
 });
 
 authRouter.post("/admin/auth/forgot-password", validate(emailSchema), async (req, res) => {
@@ -101,4 +115,32 @@ authRouter.patch("/admin/change-password", requireAdminAuth, validate(changePass
   }
 
   return ok(res, { ok: true }, "Password updated successfully.");
+});
+
+authRouter.patch(
+  "/auth/reset-password",
+  requireAdminAuth,
+  validate(firstLoginResetSchema),
+  async (req, res) => {
+    await firstLoginResetPassword({
+      adminId: req.admin.id,
+      newPassword: req.body.new_password,
+    });
+
+    return ok(
+      res,
+      { ok: true },
+      "Password updated successfully. Please login again."
+    );
+  }
+);
+
+authRouter.get("/auth/me", requireAdminAuth, async (req, res) => {
+  const currentAdmin = await getCurrentAdmin(req.admin.id);
+
+  if (!currentAdmin) {
+    return fail(res, 404, "ADMIN_NOT_FOUND", "Admin not found.");
+  }
+
+  return ok(res, currentAdmin);
 });

@@ -115,6 +115,20 @@ export const resetAdminPassword = async ({ email, newPassword }) => {
   return { email };
 };
 
+export const logoutAdmin = async ({ adminId, refreshToken }) => {
+  await mutateStore((draft) => {
+    const target = draft.admins.find(
+      (item) => item.id === adminId || (refreshToken && item.refreshToken === refreshToken)
+    );
+
+    if (target) {
+      target.refreshToken = null;
+    }
+  });
+
+  return { ok: true };
+};
+
 export const refreshAdminSession = async (refreshToken) => {
   const store = await readStore();
   const admin = store.admins.find((item) => item.refreshToken === refreshToken);
@@ -153,4 +167,37 @@ export const changeAdminPassword = async ({ adminId, currentPassword, newPasswor
   });
 
   return true;
+};
+
+export const firstLoginResetPassword = async ({ adminId, newPassword }) => {
+  const nextHash = await hashPassword(newPassword);
+
+  await mutateStore((draft) => {
+    const target = draft.admins.find((item) => item.id === adminId);
+    if (target) {
+      target.passwordHash = nextHash;
+      target.passwordResetRequired = false;
+    }
+  });
+
+  return { ok: true };
+};
+
+export const getCurrentAdmin = async (adminId) => {
+  const store = await readStore();
+  const admin = store.admins.find((item) => item.id === adminId);
+
+  if (!admin) {
+    return null;
+  }
+
+  return {
+    uid: admin.id,
+    name: admin.name,
+    email: admin.email,
+    role: admin.role,
+    is_verified: admin.isVerified,
+    passwordResetRequired: Boolean(admin.passwordResetRequired),
+    lastSignInAt: admin.lastSignInAt,
+  };
 };

@@ -26,11 +26,11 @@ Use this checklist to track project completion.
 - [x] Create JWT access token service
 - [x] Create refresh token service
 - [x] Build login API
-- [ ] Build logout API
+- [x] Build logout API
 - [x] Build refresh token API
-- [ ] Build first-login password reset API
+- [x] Build first-login password reset API
 - [x] Build forgot password API
-- [ ] Build current user API
+- [x] Build current user API
 - [x] Protect routes by authentication
 - [x] Protect routes by role
 
