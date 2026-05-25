@@ -1,4 +1,68 @@
-export const summarizeAdminConsole = (store) => {
+const formatAdminRole = (role) =>
+  String(role || "admin").replaceAll("_", " ").toUpperCase();
+
+const buildAdminRows = (store) =>
+  (store.admins || []).map((admin) => ({
+    id: admin.id,
+    name: admin.name,
+    email: admin.email,
+    role: formatAdminRole(admin.role)
+      .toLowerCase()
+      .replace(/\b\w/g, (char) => char.toUpperCase()),
+    status: admin.status || "Active",
+    lastLogin: admin.lastSignInAt
+      ? new Date(admin.lastSignInAt).toLocaleString("en-US", {
+          month: "short",
+          day: "2-digit",
+          year: "numeric",
+        })
+      : "Never",
+  }));
+
+const buildDashboardStats = ({ role, metrics }) => {
+  if (role === "super_admin") {
+    return [
+      { label: "Total Users", value: String(metrics.totalUsers), change: "+9%", icon: "Users" },
+      {
+        label: "Pending Approvals",
+        value: String(metrics.pendingApprovals),
+        change: "+4%",
+        icon: "ShieldAlert",
+      },
+      { label: "Total Orders", value: String(metrics.totalOrders), change: "+12%", icon: "FileText" },
+      {
+        label: "Completed Orders",
+        value: String(metrics.completedOrders),
+        change: "+8%",
+        icon: "ShieldCheck",
+      },
+      {
+        label: "Total Revenue",
+        value: "$142k",
+        change: "+15%",
+        icon: "CircleDollarSign",
+      },
+      { label: "Admin Team", value: String(metrics.totalAdmins), change: "+1", icon: "UserCog" },
+    ];
+  }
+
+  return [
+    { label: "Total Orders", value: String(metrics.totalOrders), change: "+12%", icon: "FileText" },
+    { label: "Active Orders", value: String(metrics.activeOrders), change: "+5%", icon: "ClipboardCheck" },
+    { label: "Completed", value: String(metrics.completedOrders), change: "+8%", icon: "ShieldCheck" },
+    {
+      label: "Pending Orders",
+      value: String(metrics.pendingOrders),
+      change: "-2%",
+      icon: "Gauge",
+      tone: "danger",
+    },
+    { label: "Total Revenue", value: "$142k", change: "+15%", icon: "CircleDollarSign" },
+    { label: "Total Notaries", value: String(metrics.totalNotaries), change: "+3%", icon: "Users" },
+  ];
+};
+
+export const summarizeAdminConsole = (store, currentAdmin) => {
   const totalUsers = store.users.length;
   const totalNotaries = store.users.filter((item) => item.role === "Notary").length;
   const activeClients = store.users.filter(
@@ -16,21 +80,36 @@ export const summarizeAdminConsole = (store) => {
     (item) => item.status === "Completed"
   ).length;
   const pendingOrders = store.orders.filter((item) => item.status === "Pending").length;
+  const totalAdmins = store.admins.length;
+
+  const resolvedAdmin = currentAdmin || store.admins[0] || null;
+  const metrics = {
+    totalUsers,
+    activeClients,
+    totalNotaries,
+    pendingApprovals,
+    totalOrders,
+    activeOrders,
+    completedOrders,
+    pendingOrders,
+    totalAdmins,
+    totalDocuments: store.documents.length,
+    pendingDocuments: store.documents.filter((item) => item.status === "Pending").length,
+    verifiedDocuments: store.documents.filter((item) => item.status === "Verified").length,
+    rejectedDocuments: store.documents.filter((item) => item.status === "Rejected").length,
+  };
 
   return {
     currentAdmin: {
-      name: store.admins[0]?.name || "Admin User",
-      role: String(store.admins[0]?.role || "admin").replaceAll("_", " ").toUpperCase(),
-      avatar: store.admins[0]?.avatar || "/profile.jpg",
+      id: resolvedAdmin?.id || "admin-user",
+      name: resolvedAdmin?.name || "Admin User",
+      role: formatAdminRole(resolvedAdmin?.role),
+      avatar: resolvedAdmin?.avatar || "/profile.jpg",
     },
-    dashboardStats: [
-      { label: "Total Orders", value: String(totalOrders), change: "+12%", icon: "FileText" },
-      { label: "Active Orders", value: String(activeOrders), change: "+5%", icon: "ClipboardCheck" },
-      { label: "Completed", value: String(completedOrders), change: "+8%", icon: "ShieldCheck" },
-      { label: "Pending Orders", value: String(pendingOrders), change: "-2%", icon: "Gauge", tone: "danger" },
-      { label: "Total Revenue", value: "$142k", change: "+15%", icon: "CircleDollarSign" },
-      { label: "Total Notaries", value: String(totalNotaries), change: "+3%", icon: "Users" },
-    ],
+    dashboardStats: buildDashboardStats({
+      role: resolvedAdmin?.role,
+      metrics,
+    }),
     recentOrders: store.orders.slice(0, 3).map((order) => ({
       id: `#${order.id}`,
       client: order.client,
@@ -53,21 +132,8 @@ export const summarizeAdminConsole = (store) => {
     payments: store.payments,
     messages: store.messages,
     supportTickets: store.supportTickets,
-    adminRows: store.adminRows,
-    metrics: {
-      totalUsers,
-      activeClients,
-      totalNotaries,
-      pendingApprovals,
-      totalOrders,
-      activeOrders,
-      completedOrders,
-      pendingOrders,
-      totalDocuments: store.documents.length,
-      pendingDocuments: store.documents.filter((item) => item.status === "Pending").length,
-      verifiedDocuments: store.documents.filter((item) => item.status === "Verified").length,
-      rejectedDocuments: store.documents.filter((item) => item.status === "Rejected").length,
-    },
+    adminRows: buildAdminRows(store),
+    metrics,
     reportSummary: {
       totalOrders,
       totalRevenue: 42900,
