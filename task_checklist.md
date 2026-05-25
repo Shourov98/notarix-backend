@@ -21,8 +21,8 @@ Use this checklist to track project completion.
 
 # 2. Authentication Module
 
-- [ ] Create User model
-- [ ] Create password hashing service
+- [x] Create User model
+- [x] Create password hashing service
 - [x] Create JWT access token service
 - [x] Create refresh token service
 - [x] Build login API

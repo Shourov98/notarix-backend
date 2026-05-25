@@ -1,5 +1,6 @@
 import { createRefreshToken, createToken } from "../../auth.js";
 import { mutateStore, readStore } from "../../store.js";
+import { comparePassword, hashPassword } from "../../shared/security/password.js";
 
 const buildAdminAuthPayload = (admin) => {
   const accessToken = createToken({
@@ -25,7 +26,11 @@ export const loginAdmin = async ({ email, password }) => {
   const store = await readStore();
   const admin = store.admins.find((item) => item.email === email);
 
-  if (!admin || admin.password !== password) {
+  const passwordMatches = admin?.passwordHash
+    ? await comparePassword(password, admin.passwordHash)
+    : false;
+
+  if (!admin || !passwordMatches) {
     return null;
   }
 
@@ -95,9 +100,16 @@ export const resetAdminPassword = async ({ email, newPassword }) => {
 
   await mutateStore((draft) => {
     const target = draft.admins.find((item) => item.id === admin.id);
-    target.password = newPassword;
+    target.passwordHash = null;
     target.forgotOtp = null;
     target.forgotOtpVerified = false;
+  });
+
+  const nextHash = await hashPassword(newPassword);
+
+  await mutateStore((draft) => {
+    const target = draft.admins.find((item) => item.id === admin.id);
+    target.passwordHash = nextHash;
   });
 
   return { email };
@@ -125,13 +137,19 @@ export const changeAdminPassword = async ({ adminId, currentPassword, newPasswor
   const store = await readStore();
   const admin = store.admins.find((item) => item.id === adminId);
 
-  if (!admin || admin.password !== currentPassword) {
+  const matches = admin?.passwordHash
+    ? await comparePassword(currentPassword, admin.passwordHash)
+    : false;
+
+  if (!admin || !matches) {
     return false;
   }
 
+  const nextHash = await hashPassword(newPassword);
+
   await mutateStore((draft) => {
     const target = draft.admins.find((item) => item.id === adminId);
-    target.password = newPassword;
+    target.passwordHash = nextHash;
   });
 
   return true;
