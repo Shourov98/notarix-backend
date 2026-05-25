@@ -105,14 +105,14 @@ Use this checklist to track project completion.
 
 # 7. Bank Information Module
 
-- [ ] Add bank info fields to user profile
-- [ ] Build save bank info API
-- [ ] Build update bank info API
-- [ ] Build get own bank info API
-- [ ] Build admin view bank info API
-- [ ] Mask account number in frontend
-- [ ] Encrypt sensitive bank data
-- [ ] Add bank info validation
+- [x] Add bank info fields to user profile
+- [x] Build save bank info API
+- [x] Build update bank info API
+- [x] Build get own bank info API
+- [x] Build admin view bank info API
+- [x] Mask account number in frontend
+- [x] Encrypt sensitive bank data
+- [x] Add bank info validation
 
 ---
 
