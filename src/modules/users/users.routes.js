@@ -206,6 +206,37 @@ usersRouter.patch("/admin/users/:id/status", requireAdminAuth, async (req, res) 
   return ok(res, updated, "User status updated.");
 });
 
+const updateUserLifecycleStatus = async (userId, nextStatus) =>
+  mutateStore((store) => {
+    const user = store.users.find((item) => item.id === userId);
+    if (!user) {
+      return null;
+    }
+
+    user.status = nextStatus;
+    return user;
+  });
+
+usersRouter.patch("/admin/users/:id/suspend", requireAdminAuth, async (req, res) => {
+  const updated = await updateUserLifecycleStatus(req.params.id, "Suspended");
+
+  if (!updated) {
+    return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+  }
+
+  return ok(res, updated, "User suspended successfully.");
+});
+
+usersRouter.patch("/admin/users/:id/activate", requireAdminAuth, async (req, res) => {
+  const updated = await updateUserLifecycleStatus(req.params.id, "Active");
+
+  if (!updated) {
+    return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+  }
+
+  return ok(res, updated, "User activated successfully.");
+});
+
 usersRouter.post(
   "/admin/users/:id/documents",
   requireAdminAuth,

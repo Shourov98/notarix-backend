@@ -59,7 +59,7 @@ Use this checklist to track project completion.
 - [x] Build admin management page
 - [x] Build user table with filters
 - [x] Build user status update API
-- [ ] Build suspend/activate user API
+- [x] Build suspend/activate user API
 - [x] Build user detail view
 - [x] Build user search and pagination
 
