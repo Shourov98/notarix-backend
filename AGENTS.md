@@ -18,6 +18,120 @@ The standard is **production-grade engineering**, not prototyping.
 
 ---
 
+## Git Workflow
+
+### Branching Rules
+
+- `main` must always stay deployable
+- Never work directly on `main`
+- Start every backend module or feature from an updated `main`
+- Create one branch per module, feature, bug fix, or refactor
+
+### Branch Naming
+
+Use clear branch names:
+
+- `feature/backend-auth-refresh`
+- `feature/backend-document-upload`
+- `fix/backend-session-timeout`
+- `refactor/backend-order-service`
+- `chore/backend-api-docs`
+
+### Start-of-Work Flow
+
+Before starting work:
+
+1. checkout `main`
+2. pull latest changes
+3. create a focused branch
+
+Preferred command flow:
+
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/backend-your-feature
+```
+
+### Commit Rules
+
+- Commit only when a meaningful unit of work is complete
+- Keep commits focused and readable
+- Do not mix unrelated backend concerns in one commit
+- Run relevant tests, linting, and validation before committing
+- Write commit messages in simple conventional style
+
+Preferred commit message patterns:
+
+- `feat(backend): add document verification service`
+- `fix(backend): handle expired session token`
+- `refactor(backend): split order validation from controller`
+- `docs(backend): document webhook error responses`
+- `test(backend): add coverage for payment retry flow`
+
+### Push Rules
+
+- Push the feature branch after the module or feature reaches a stable checkpoint
+- Do not push broken or half-reviewed work unless clearly marked as draft/WIP
+- Keep remote history understandable for review
+
+```bash
+git push -u origin feature/backend-your-feature
+```
+
+### Pull Request Rules
+
+Open a pull request only after a full module, feature, or clearly reviewable slice is completed.
+
+Every PR should include:
+
+- clear summary of the backend change
+- affected endpoints, services, jobs, or schemas
+- testing performed
+- migration or rollout notes if applicable
+- risks, edge cases, or follow-up items
+
+### Merge Rules
+
+- Re-sync the branch with `main` before merge
+- Resolve conflicts carefully; never overwrite newer production-safe logic blindly
+- Merge only after review feedback is addressed
+- After merge, `main` should remain stable, tested, and documented
+
+Preferred sync flow before final review or merge:
+
+```bash
+git checkout main
+git pull origin main
+git checkout feature/backend-your-feature
+git merge main
+```
+
+### Completion Standard
+
+A backend feature is considered complete only when all of the following are done:
+
+- implementation is finished
+- tests are added or updated
+- docs are updated
+- branch is pushed
+- pull request is prepared
+- merge happens only after review readiness
+
+### Agent Behavior Requirement
+
+When working in this repository, the coding agent must:
+
+- plan work by module or feature boundary
+- avoid direct commits to `main`
+- create or recommend a dedicated branch before major work
+- commit with conventional, human-readable messages
+- push and open PRs only when the work reaches a coherent completion point
+- avoid mixing backend and frontend work in the same branch unless explicitly requested
+- treat merge readiness as part of delivery, not an afterthought
+
+---
+
 ## Core Engineering Standards
 
 ### Non-Negotiable Requirements
