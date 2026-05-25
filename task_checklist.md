@@ -92,7 +92,7 @@ Use this checklist to track project completion.
 - [x] Add travel radius field
 - [x] Add coverage areas field
 - [x] Add notary document upload section
-- [ ] Mark uploaded documents as Verified
+- [x] Mark uploaded documents as Verified
 - [ ] Mark missing documents as Missing
 - [x] Create notary API
 - [x] Auto-generate password
