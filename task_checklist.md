@@ -6,7 +6,7 @@ Use this checklist to track project completion.
 
 # 1. Project Setup
 
-- [ ] Create frontend project
+- [x] Create frontend project
 - [x] Create backend project
 - [ ] Setup MongoDB connection
 - [x] Setup environment variables
