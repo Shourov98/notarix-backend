@@ -90,7 +90,7 @@ Use this checklist to track project completion.
 - [x] Add address information fields
 - [x] Add commission details fields
 - [x] Add travel radius field
-- [ ] Add coverage areas field
+- [x] Add coverage areas field
 - [ ] Add notary document upload section
 - [ ] Mark uploaded documents as Verified
 - [ ] Mark missing documents as Missing
