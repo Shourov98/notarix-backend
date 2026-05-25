@@ -1,3 +1,21 @@
+import { encryptBankInfo } from "./shared/security/bank-info.js";
+
+const clientBankInfoSeed = encryptBankInfo({
+  bankName: "Chase Bank",
+  accountHolderName: "Axiom Real Estate Group LLC",
+  accountType: "business_checking",
+  routingNumber: "021000021",
+  accountNumber: "1111222233334444",
+});
+
+const notaryBankInfoSeed = encryptBankInfo({
+  bankName: "Chase Bank",
+  accountHolderName: "Sarah Jenkins",
+  accountType: "checking",
+  routingNumber: "021000021",
+  accountNumber: "5555666677778888",
+});
+
 export const seedData = {
   admins: [
     {
@@ -99,11 +117,8 @@ export const seedData = {
         { title: "W-9", status: "Pending", file: "w9_form.pdf" },
         { title: "Business License", status: "Missing", file: null },
       ],
-      bankInfo: {
-        bankName: "Chase Bank",
-        routingNumberMasked: "********4412",
-        accountNumberMasked: "********9845",
-      },
+      bankInfoEncrypted: clientBankInfoSeed.encrypted,
+      bankInfoMasked: clientBankInfoSeed.masked,
     },
     {
       id: "notary-001",
@@ -130,11 +145,8 @@ export const seedData = {
         zip: "10022",
       },
       specialties: ["RON", "HELOC", "Purchase", "Seller Package"],
-      payment: {
-        bankName: "Chase Bank",
-        routingNumberMasked: "********4412",
-        accountNumberMasked: "********9845",
-      },
+      bankInfoEncrypted: notaryBankInfoSeed.encrypted,
+      bankInfoMasked: notaryBankInfoSeed.masked,
       requiredDocuments: [
         { title: "Commission Certificate", status: "Verified", file: "commission_certificate.pdf" },
         { title: "Background Check", status: "Verified", file: "background_check.pdf" },

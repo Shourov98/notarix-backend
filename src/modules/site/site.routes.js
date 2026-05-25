@@ -1,8 +1,32 @@
 import { Router } from "express";
-import { readStore } from "../../store.js";
+import { z } from "zod";
+import { mutateStore, readStore } from "../../store.js";
 import { fail, ok } from "../../shared/http/respond.js";
+import { validate } from "../../shared/middleware/validate.js";
+import {
+  buildMaskedBankInfo,
+  decryptBankInfo,
+  encryptBankInfo,
+} from "../../shared/security/bank-info.js";
 
 export const siteRouter = Router();
+
+const siteBankInfoSchema = z.object({
+  body: z.object({
+    bankName: z.string().min(2),
+    accountHolderName: z.string().min(2),
+    accountType: z.enum(["checking", "savings", "business_checking"]),
+    routingNumber: z.string().regex(/^\d{9}$/),
+    accountNumber: z.string().regex(/^\d{6,17}$/),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+const SITE_CLIENT_ID = "client-001";
+const SITE_NOTARY_ID = "notary-001";
+
+const getPortalUser = (store, userId) => store.users.find((item) => item.id === userId);
 
 siteRouter.get("/site/client/overview", async (_req, res) => {
   const store = await readStore();
@@ -19,6 +43,154 @@ siteRouter.get("/site/client/overview", async (_req, res) => {
 siteRouter.get("/site/notary/overview", async (_req, res) => {
   const store = await readStore();
   return ok(res, store.siteNotary);
+});
+
+siteRouter.get("/site/client/bank-info", async (_req, res) => {
+  const store = await readStore();
+  const user = getPortalUser(store, SITE_CLIENT_ID);
+
+  if (!user) {
+    return fail(res, 404, "USER_NOT_FOUND", "Client not found.");
+  }
+
+  const bankInfo = decryptBankInfo(user.bankInfoEncrypted);
+  if (!bankInfo) {
+    return fail(res, 404, "BANK_INFO_NOT_FOUND", "Bank info not found.");
+  }
+
+  return ok(res, bankInfo);
+});
+
+siteRouter.post(
+  "/site/client/bank-info",
+  validate(siteBankInfoSchema),
+  async (req, res) => {
+    const encrypted = encryptBankInfo(req.body);
+    const updated = await mutateStore((store) => {
+      const user = getPortalUser(store, SITE_CLIENT_ID);
+      if (!user) {
+        return null;
+      }
+
+      user.bankInfoEncrypted = encrypted.encrypted;
+      user.bankInfoMasked = encrypted.masked;
+      user.bankInfoUpdatedAt = new Date().toISOString();
+      return user;
+    });
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "Client not found.");
+    }
+
+    return ok(res, updated.bankInfoMasked, "Bank info saved successfully.", 201);
+  }
+);
+
+siteRouter.patch(
+  "/site/client/bank-info",
+  validate(siteBankInfoSchema),
+  async (req, res) => {
+    const encrypted = encryptBankInfo(req.body);
+    const updated = await mutateStore((store) => {
+      const user = getPortalUser(store, SITE_CLIENT_ID);
+      if (!user) {
+        return null;
+      }
+
+      user.bankInfoEncrypted = encrypted.encrypted;
+      user.bankInfoMasked = encrypted.masked;
+      user.bankInfoUpdatedAt = new Date().toISOString();
+      return user;
+    });
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "Client not found.");
+    }
+
+    return ok(res, updated.bankInfoMasked, "Bank info updated successfully.");
+  }
+);
+
+siteRouter.get("/site/notary/bank-info", async (_req, res) => {
+  const store = await readStore();
+  const user = getPortalUser(store, SITE_NOTARY_ID);
+
+  if (!user) {
+    return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
+  }
+
+  const bankInfo = decryptBankInfo(user.bankInfoEncrypted);
+  if (!bankInfo) {
+    return fail(res, 404, "BANK_INFO_NOT_FOUND", "Bank info not found.");
+  }
+
+  return ok(res, bankInfo);
+});
+
+siteRouter.post(
+  "/site/notary/bank-info",
+  validate(siteBankInfoSchema),
+  async (req, res) => {
+    const encrypted = encryptBankInfo(req.body);
+    const updated = await mutateStore((store) => {
+      const user = getPortalUser(store, SITE_NOTARY_ID);
+      if (!user) {
+        return null;
+      }
+
+      user.bankInfoEncrypted = encrypted.encrypted;
+      user.bankInfoMasked = encrypted.masked;
+      user.bankInfoUpdatedAt = new Date().toISOString();
+      return user;
+    });
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
+    }
+
+    return ok(res, updated.bankInfoMasked, "Bank info saved successfully.", 201);
+  }
+);
+
+siteRouter.patch(
+  "/site/notary/bank-info",
+  validate(siteBankInfoSchema),
+  async (req, res) => {
+    const encrypted = encryptBankInfo(req.body);
+    const updated = await mutateStore((store) => {
+      const user = getPortalUser(store, SITE_NOTARY_ID);
+      if (!user) {
+        return null;
+      }
+
+      user.bankInfoEncrypted = encrypted.encrypted;
+      user.bankInfoMasked = encrypted.masked;
+      user.bankInfoUpdatedAt = new Date().toISOString();
+      return user;
+    });
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
+    }
+
+    return ok(res, updated.bankInfoMasked, "Bank info updated successfully.");
+  }
+);
+
+siteRouter.get("/site/admin/users/:id/bank-info", async (req, res) => {
+  const store = await readStore();
+  const user = store.users.find((item) => item.id === req.params.id);
+
+  if (!user) {
+    return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+  }
+
+  const bankInfo = buildMaskedBankInfo(user);
+  if (!bankInfo) {
+    return fail(res, 404, "BANK_INFO_NOT_FOUND", "Bank info not found.");
+  }
+
+  return ok(res, bankInfo);
 });
 
 siteRouter.get("/site/documents/:id", async (req, res) => {

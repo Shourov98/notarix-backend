@@ -37,3 +37,36 @@ export const requireAdminRole = (...allowedRoles) => (req, res, next) => {
 
   next();
 };
+
+export const requireAuthenticatedActor = async (req, res, next) => {
+  const auth = getAuthPayload(req);
+
+  if (!auth?.uid) {
+    return fail(res, 401, "UNAUTHORIZED", "Unauthorized. Please sign in again.");
+  }
+
+  const store = await readStore();
+  const admin = store.admins.find((item) => item.id === auth.uid);
+  if (admin) {
+    req.actor = {
+      id: admin.id,
+      role: admin.role,
+      type: "admin",
+      record: admin,
+    };
+    return next();
+  }
+
+  const user = store.users.find((item) => item.id === auth.uid);
+  if (!user) {
+    return fail(res, 401, "UNAUTHORIZED", "User session is no longer valid.");
+  }
+
+  req.actor = {
+    id: user.id,
+    role: user.role,
+    type: "user",
+    record: user,
+  };
+  return next();
+};

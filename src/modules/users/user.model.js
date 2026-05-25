@@ -10,6 +10,15 @@ const userSchema = new mongoose.Schema(
     passwordResetRequired: { type: Boolean, default: false },
     status: { type: String, default: "Active" },
     authProvider: { type: String, default: "local" },
+    bankInfoEncrypted: { type: String, default: null },
+    bankInfoMasked: {
+      bankName: { type: String, default: null },
+      accountHolderName: { type: String, default: null },
+      accountType: { type: String, default: null },
+      routingNumber: { type: String, default: null },
+      accountNumber: { type: String, default: null },
+    },
+    bankInfoUpdatedAt: { type: Date, default: null },
   },
   {
     timestamps: true,

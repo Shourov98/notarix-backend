@@ -4,11 +4,17 @@ import { z } from "zod";
 import { mutateStore, readStore } from "../../store.js";
 import {
   requireAdminAuth,
+  requireAuthenticatedActor,
   requireAdminRole,
 } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { queueEmail } from "../../shared/notifications/email.service.js";
+import {
+  buildMaskedBankInfo,
+  decryptBankInfo,
+  encryptBankInfo,
+} from "../../shared/security/bank-info.js";
 import { hashPassword } from "../../shared/security/password.js";
 import { upload } from "../../shared/storage/upload.js";
 
@@ -111,6 +117,32 @@ const userDocumentStatusSchema = z.object({
   }),
 });
 
+const bankInfoSchema = z.object({
+  body: z.object({
+    bankName: z.string().min(2),
+    accountHolderName: z.string().min(2),
+    accountType: z.enum(["checking", "savings", "business_checking"]),
+    routingNumber: z.string().regex(/^\d{9}$/),
+    accountNumber: z.string().regex(/^\d{6,17}$/),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+const serializeUser = (user) => {
+  const {
+    passwordHash,
+    generatedPassword,
+    bankInfoEncrypted,
+    ...safeUser
+  } = user;
+
+  return {
+    ...safeUser,
+    bankInfo: buildMaskedBankInfo(user),
+  };
+};
+
 const createDocumentRecord = (document) => ({
   id: document.id || `doc-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
   title: document.title,
@@ -164,7 +196,7 @@ usersRouter.get("/admin/users/:id", requireAdminAuth, async (req, res) => {
     return fail(res, 404, "USER_NOT_FOUND", "User not found.");
   }
 
-  return ok(res, user);
+  return ok(res, serializeUser(user));
 });
 
 usersRouter.post(
@@ -387,6 +419,113 @@ usersRouter.patch("/admin/users/:id/status", requireAdminAuth, async (req, res) 
   }
 
   return ok(res, updated, "User status updated.");
+});
+
+usersRouter.post(
+  "/users/bank-info",
+  requireAuthenticatedActor,
+  validate(bankInfoSchema),
+  async (req, res) => {
+    if (req.actor.type !== "user") {
+      return fail(res, 403, "FORBIDDEN", "Only users can save bank info here.");
+    }
+
+    const current = await readStore();
+    const existingUser = current.users.find((item) => item.id === req.actor.id);
+    if (existingUser?.bankInfoEncrypted) {
+      return fail(
+        res,
+        409,
+        "BANK_INFO_ALREADY_EXISTS",
+        "Bank info already exists. Use update instead."
+      );
+    }
+
+    const encrypted = encryptBankInfo(req.body);
+    const updated = await mutateStore((store) => {
+      const user = store.users.find((item) => item.id === req.actor.id);
+      if (!user) {
+        return null;
+      }
+
+      user.bankInfoEncrypted = encrypted.encrypted;
+      user.bankInfoMasked = encrypted.masked;
+      user.bankInfoUpdatedAt = new Date().toISOString();
+      return user;
+    });
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+    }
+
+    return ok(res, updated.bankInfoMasked, "Bank info saved successfully.", 201);
+  }
+);
+
+usersRouter.patch(
+  "/users/bank-info",
+  requireAuthenticatedActor,
+  validate(bankInfoSchema),
+  async (req, res) => {
+    if (req.actor.type !== "user") {
+      return fail(res, 403, "FORBIDDEN", "Only users can update bank info here.");
+    }
+
+    const encrypted = encryptBankInfo(req.body);
+    const updated = await mutateStore((store) => {
+      const user = store.users.find((item) => item.id === req.actor.id);
+      if (!user) {
+        return null;
+      }
+
+      user.bankInfoEncrypted = encrypted.encrypted;
+      user.bankInfoMasked = encrypted.masked;
+      user.bankInfoUpdatedAt = new Date().toISOString();
+      return user;
+    });
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+    }
+
+    return ok(res, updated.bankInfoMasked, "Bank info updated successfully.");
+  }
+);
+
+usersRouter.get("/users/bank-info", requireAuthenticatedActor, async (req, res) => {
+  if (req.actor.type !== "user") {
+    return fail(res, 403, "FORBIDDEN", "Only users can access bank info here.");
+  }
+
+  const store = await readStore();
+  const user = store.users.find((item) => item.id === req.actor.id);
+
+  if (!user) {
+    return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+  }
+
+  const bankInfo = decryptBankInfo(user.bankInfoEncrypted);
+  if (!bankInfo) {
+    return fail(res, 404, "BANK_INFO_NOT_FOUND", "Bank info not found.");
+  }
+
+  return ok(res, bankInfo);
+});
+
+usersRouter.get("/admin/users/:id/bank-info", requireAdminAuth, async (req, res) => {
+  const store = await readStore();
+  const user = store.users.find((item) => item.id === req.params.id);
+
+  if (!user) {
+    return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+  }
+
+  const bankInfo = buildMaskedBankInfo(user);
+  if (!bankInfo) {
+    return fail(res, 404, "BANK_INFO_NOT_FOUND", "Bank info not found.");
+  }
+
+  return ok(res, bankInfo);
 });
 
 const updateUserLifecycleStatus = async (userId, nextStatus) =>
