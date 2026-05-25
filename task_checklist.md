@@ -11,7 +11,7 @@ Use this checklist to track project completion.
 - [x] Setup MongoDB connection
 - [x] Setup environment variables
 - [x] Setup API base structure
-- [ ] Setup error handler middleware
+- [x] Setup error handler middleware
 - [ ] Setup validation middleware
 - [ ] Setup file upload storage
 - [x] Setup role-based middleware

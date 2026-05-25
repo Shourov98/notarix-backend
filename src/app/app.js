@@ -7,7 +7,11 @@ import { usersRouter } from "../modules/users/users.routes.js";
 import { ordersRouter } from "../modules/orders/orders.routes.js";
 import { siteRouter } from "../modules/site/site.routes.js";
 import { adminRouter } from "../modules/admin/admin.routes.js";
-import { fail, ok } from "../shared/http/respond.js";
+import { ok } from "../shared/http/respond.js";
+import {
+  errorHandler,
+  notFoundHandler,
+} from "../shared/middleware/error-handler.js";
 
 export const createApp = () => {
   const app = express();
@@ -31,9 +35,8 @@ export const createApp = () => {
   app.use(config.apiPrefix, adminRouter);
   app.use(config.apiPrefix, siteRouter);
 
-  app.use((req, res) =>
-    fail(res, 404, "NOT_FOUND", `No route matched ${req.method} ${req.originalUrl}`)
-  );
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   return app;
 };
