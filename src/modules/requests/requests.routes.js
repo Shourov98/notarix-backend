@@ -3,6 +3,7 @@ import { mutateStore, readStore } from "../../store.js";
 import { requireAdminAuth } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
+import { createNotification } from "../../shared/notifications/notification.service.js";
 import {
   createRequestSchema,
   rejectRequestSchema,
@@ -47,6 +48,15 @@ requestsRouter.post("/requests", validate(createRequestSchema), async (req, res)
 
   await mutateStore((store) => {
     store.requests.unshift(requestRecord);
+  });
+
+  await createNotification({
+    title: "New access request submitted",
+    meta: `${requestRecord.name} · ${requestRecord.requestType} · ${requestRecord.state || "No state provided"}`,
+    action: "Review Request",
+    audience: "admin",
+    entityType: "user_request",
+    entityId: requestRecord.id,
   });
 
   return ok(

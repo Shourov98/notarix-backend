@@ -46,7 +46,7 @@ Use this checklist to track project completion.
 - [x] Build request details page
 - [x] Build approve request API
 - [x] Build reject request API
-- [ ] Send admin notification after new request
+- [x] Send admin notification after new request
 - [ ] Send user notification/email after approval or rejection
 
 ---
