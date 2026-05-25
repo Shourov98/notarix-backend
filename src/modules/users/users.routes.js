@@ -70,6 +70,36 @@ const clientCreateSchema = z.object({
   params: z.object({}).passthrough(),
 });
 
+const notaryCreateSchema = z.object({
+  body: z.object({
+    loginEmail: z.string().email().optional(),
+    personalInfo: z.object({
+      fullName: z.string().min(2),
+      email: z.string().email(),
+      phone: z.string().min(7),
+    }),
+    address: z.object({
+      line1: z.string().min(2),
+      line2: z.string().optional(),
+      city: z.string().min(2),
+      state: z.string().min(2),
+      zip: z.string().min(2),
+      country: z.string().optional(),
+    }),
+    commission: z.object({
+      number: z.string().min(2),
+      state: z.string().min(2),
+      expirationDate: z.string().min(2),
+      travelRadius: z.string().optional(),
+      coverageAreas: z.string().optional(),
+    }),
+    requiredDocuments: z.array(requiredDocumentSchema).optional(),
+    sendInviteEmail: z.boolean().optional(),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
 const userDocumentStatusSchema = z.object({
   body: z.object({
     status: z.enum(["Pending", "Verified", "Rejected", "Missing"]),
@@ -213,42 +243,77 @@ usersRouter.post(
   }
 );
 
-usersRouter.post("/admin/users/notary", requireAdminAuth, async (req, res) => {
-  const email = String(req.body?.loginEmail || req.body?.personalInfo?.email || "").trim().toLowerCase();
-  const name = String(req.body?.personalInfo?.fullName || "New Notary");
+usersRouter.post(
+  "/admin/users/notary",
+  requireAdminAuth,
+  validate(notaryCreateSchema),
+  async (req, res) => {
+    const email = String(
+      req.body?.loginEmail || req.body?.personalInfo?.email || ""
+    )
+      .trim()
+      .toLowerCase();
+    const name = String(req.body?.personalInfo?.fullName || "New Notary");
+    const temporaryPassword = crypto.randomBytes(6).toString("base64url");
+    const passwordHash = await hashPassword(temporaryPassword);
 
-  const newUser = {
-    id: `notary-${Date.now()}`,
-    name,
-    email,
-    role: "Notary",
-    company: name,
-    area: req.body?.address?.state || "Unknown",
-    status: "Pending",
-    verification: "Pending",
-    avatarTone: "bg-orange-100 text-orange-700",
-    commission: req.body?.commission || {},
-    address: req.body?.address || {},
-    requiredDocuments: req.body?.requiredDocuments || [],
-  };
-
-  await mutateStore((store) => {
-    store.users.unshift(newUser);
-  });
-
-  return ok(
-    res,
-    {
-      userId: newUser.id,
-      role: newUser.role,
-      status: newUser.status,
-      verified: false,
+    const newUser = {
+      id: `notary-${Date.now()}`,
+      name,
+      email,
+      passwordHash,
       passwordResetRequired: true,
-    },
-    "Notary created successfully",
-    201
-  );
-});
+      role: "Notary",
+      company: name,
+      area: req.body?.address?.state || "Unknown",
+      status: "Pending",
+      verification: "Pending",
+      avatarTone: "bg-orange-100 text-orange-700",
+      personalInfo: req.body?.personalInfo || {},
+      commission: req.body?.commission || {},
+      address: req.body?.address || {},
+      requiredDocuments: (req.body?.requiredDocuments || []).map(createDocumentRecord),
+      generatedPassword: temporaryPassword,
+    };
+
+    await mutateStore((store) => {
+      store.users.unshift(newUser);
+    });
+
+    await queueEmail({
+      to: email,
+      subject: "Your Notarix notary account is ready",
+      text: [
+        `Hello ${name},`,
+        "",
+        "Your Notarix notary account has been created.",
+        `Temporary password: ${temporaryPassword}`,
+        "Please sign in and reset your password on first login.",
+      ].join("\n"),
+      html: `
+        <p>Hello ${name},</p>
+        <p>Your Notarix notary account has been created.</p>
+        <p><strong>Temporary password:</strong> ${temporaryPassword}</p>
+        <p>Please sign in and reset your password on first login.</p>
+      `,
+      category: "notary-invite",
+    });
+
+    return ok(
+      res,
+      {
+        userId: newUser.id,
+        role: newUser.role,
+        status: newUser.status,
+        verified: false,
+        temporaryPassword,
+        passwordResetRequired: true,
+      },
+      "Notary created successfully",
+      201
+    );
+  }
+);
 
 usersRouter.post(
   "/admin/users/admin",
