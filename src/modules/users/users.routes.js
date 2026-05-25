@@ -72,7 +72,7 @@ const clientCreateSchema = z.object({
 
 const userDocumentStatusSchema = z.object({
   body: z.object({
-    status: z.enum(["Pending", "Verified", "Rejected"]),
+    status: z.enum(["Pending", "Verified", "Rejected", "Missing"]),
   }),
   query: z.object({}).passthrough(),
   params: z.object({
@@ -431,6 +431,11 @@ usersRouter.patch(
       }
 
       document.status = req.body.status;
+      if (req.body.status === "Missing") {
+        document.file = null;
+        document.mimeType = undefined;
+        document.size = undefined;
+      }
       return user;
     });
 

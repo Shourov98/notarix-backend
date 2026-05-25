@@ -74,7 +74,7 @@ Use this checklist to track project completion.
 - [x] Add secondary contact fields
 - [x] Add required document upload section
 - [x] Mark uploaded documents as Verified
-- [ ] Mark missing documents as Missing
+- [x] Mark missing documents as Missing
 - [x] Create client API
 - [x] Auto-generate password
 - [x] Set passwordResetRequired to true
