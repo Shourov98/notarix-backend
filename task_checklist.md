@@ -13,7 +13,7 @@ Use this checklist to track project completion.
 - [x] Setup API base structure
 - [x] Setup error handler middleware
 - [x] Setup validation middleware
-- [ ] Setup file upload storage
+- [x] Setup file upload storage
 - [x] Setup role-based middleware
 - [ ] Setup Socket.IO server
 

@@ -12,6 +12,7 @@ import {
   errorHandler,
   notFoundHandler,
 } from "../shared/middleware/error-handler.js";
+import { handleUploadErrors } from "../shared/storage/upload.js";
 
 export const createApp = () => {
   const app = express();
@@ -35,6 +36,7 @@ export const createApp = () => {
   app.use(config.apiPrefix, adminRouter);
   app.use(config.apiPrefix, siteRouter);
 
+  app.use(handleUploadErrors);
   app.use(notFoundHandler);
   app.use(errorHandler);
 

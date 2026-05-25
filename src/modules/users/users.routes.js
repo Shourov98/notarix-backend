@@ -2,6 +2,7 @@ import { Router } from "express";
 import { mutateStore, readStore } from "../../store.js";
 import { requireAdminAuth } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
+import { upload } from "../../shared/storage/upload.js";
 
 export const usersRouter = Router();
 
@@ -129,4 +130,47 @@ usersRouter.patch("/admin/users/:id/status", requireAdminAuth, async (req, res) 
   }
 
   return ok(res, updated, "User status updated.");
+});
+
+usersRouter.post(
+  "/admin/users/:id/documents",
+  requireAdminAuth,
+  upload.array("documents", 5),
+  async (req, res) => {
+    const files = req.files || [];
+    const updated = await mutateStore((store) => {
+      const user = store.users.find((item) => item.id === req.params.id);
+      if (!user) {
+        return null;
+      }
+
+      const nextDocuments = files.map((file) => ({
+        title: file.originalname,
+        status: "Pending",
+        file: file.filename,
+        mimeType: file.mimetype,
+        size: file.size,
+      }));
+
+      user.requiredDocuments = [...(user.requiredDocuments || []), ...nextDocuments];
+      return user;
+    });
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+    }
+
+    return ok(res, updated.requiredDocuments, "Documents uploaded successfully.", 201);
+  }
+);
+
+usersRouter.get("/admin/users/:id/documents", requireAdminAuth, async (req, res) => {
+  const store = await readStore();
+  const user = store.users.find((item) => item.id === req.params.id);
+
+  if (!user) {
+    return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+  }
+
+  return ok(res, user.requiredDocuments || []);
 });

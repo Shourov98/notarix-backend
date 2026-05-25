@@ -17,5 +17,7 @@ export const config = {
   mongodbUri: process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/notarix",
   mongodbDbName: process.env.MONGODB_DB_NAME || "notarix",
   mongodbOptional: process.env.MONGODB_OPTIONAL !== "false",
+  maxFileSizeMb: resolveNumber(process.env.MAX_FILE_SIZE_MB, 25),
+  uploadTmpDir: process.env.UPLOAD_TMP_DIR || "tmp/uploads",
   dataFilePath: path.resolve(process.cwd(), "data", "store.json"),
 };
