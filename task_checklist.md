@@ -67,7 +67,7 @@ Use this checklist to track project completion.
 
 # 5. Client Management Module
 
-- [ ] Build Add Client form
+- [x] Build Add Client form
 - [x] Add organization information fields
 - [x] Add address fields
 - [x] Add primary contact fields
