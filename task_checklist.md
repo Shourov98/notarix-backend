@@ -77,7 +77,7 @@ Use this checklist to track project completion.
 - [ ] Mark missing documents as Missing
 - [x] Create client API
 - [x] Auto-generate password
-- [ ] Set passwordResetRequired to true
+- [x] Set passwordResetRequired to true
 - [ ] Send invite email
 - [x] Build client profile page
 

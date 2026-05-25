@@ -131,6 +131,7 @@ usersRouter.post(
       name,
       email,
       passwordHash,
+      passwordResetRequired: true,
       role: "Client",
       company,
       area: req.body?.address?.state || "Unknown",
