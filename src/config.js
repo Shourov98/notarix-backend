@@ -1,0 +1,18 @@
+import path from "node:path";
+
+const resolveNumber = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+export const config = {
+  nodeEnv: process.env.NODE_ENV || "development",
+  port: resolveNumber(process.env.PORT, 5191),
+  apiPrefix: process.env.API_PREFIX || "/api/v1",
+  appUrl: process.env.APP_URL || "http://localhost:5191",
+  clientAppUrl: process.env.CLIENT_APP_URL || "http://localhost:3000",
+  adminAppUrl: process.env.ADMIN_APP_URL || "http://localhost:5173",
+  tokenSecret: process.env.JWT_ACCESS_SECRET || "notarix-dev-access-secret",
+  refreshSecret: process.env.JWT_REFRESH_SECRET || "notarix-dev-refresh-secret",
+  dataFilePath: path.resolve(process.cwd(), "data", "store.json"),
+};
