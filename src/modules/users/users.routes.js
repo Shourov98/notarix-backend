@@ -24,6 +24,60 @@ const adminCreateSchema = z.object({
   params: z.object({}).passthrough(),
 });
 
+const requiredDocumentSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(1),
+  status: z.enum(["Missing", "Pending", "Verified", "Rejected"]).optional(),
+  file: z.string().nullable().optional(),
+  mimeType: z.string().optional(),
+  size: z.number().optional(),
+});
+
+const clientCreateSchema = z.object({
+  body: z.object({
+    loginEmail: z.string().email().optional(),
+    organization: z.object({
+      companyName: z.string().min(2),
+      companyType: z.string().optional(),
+      website: z.string().optional(),
+      mainOfficePhone: z.string().optional(),
+    }),
+    address: z.object({
+      line1: z.string().min(2),
+      line2: z.string().optional(),
+      city: z.string().min(2),
+      state: z.string().min(2),
+      zip: z.string().min(2),
+      country: z.string().optional(),
+    }),
+    primaryContact: z.object({
+      name: z.string().min(2),
+      email: z.string().email(),
+      phone: z.string().min(7),
+    }),
+    secondaryContact: z
+      .object({
+        name: z.string().optional(),
+        email: z.string().email().optional().or(z.literal("")),
+        phone: z.string().optional(),
+      })
+      .optional(),
+    requiredDocuments: z.array(requiredDocumentSchema).optional(),
+    sendInviteEmail: z.boolean().optional(),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+const createDocumentRecord = (document) => ({
+  id: document.id || `doc-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+  title: document.title,
+  status: document.status || (document.file ? "Pending" : "Missing"),
+  file: document.file || null,
+  mimeType: document.mimeType,
+  size: document.size,
+});
+
 usersRouter.get("/admin/users", requireAdminAuth, async (req, res) => {
   const store = await readStore();
   const search = String(req.query.search || "").trim().toLowerCase();
@@ -55,45 +109,61 @@ usersRouter.get("/admin/users/:id", requireAdminAuth, async (req, res) => {
   return ok(res, user);
 });
 
-usersRouter.post("/admin/users/client", requireAdminAuth, async (req, res) => {
-  const email = String(req.body?.loginEmail || req.body?.primaryContact?.email || "").trim().toLowerCase();
-  const name = String(req.body?.primaryContact?.name || "New Client");
-  const company = String(req.body?.organization?.companyName || "New Organization");
+usersRouter.post(
+  "/admin/users/client",
+  requireAdminAuth,
+  validate(clientCreateSchema),
+  async (req, res) => {
+    const email = String(
+      req.body?.loginEmail || req.body?.primaryContact?.email || ""
+    )
+      .trim()
+      .toLowerCase();
+    const name = String(req.body?.primaryContact?.name || "New Client");
+    const company = String(
+      req.body?.organization?.companyName || "New Organization"
+    );
+    const temporaryPassword = crypto.randomBytes(6).toString("base64url");
+    const passwordHash = await hashPassword(temporaryPassword);
 
-  const newUser = {
-    id: `client-${Date.now()}`,
-    name,
-    email,
-    role: "Client",
-    company,
-    area: req.body?.address?.state || "Unknown",
-    status: "Active",
-    verification: "Pending",
-    avatarTone: "bg-cyan-100 text-cyan-700",
-    organization: req.body?.organization || {},
-    address: req.body?.address || {},
-    primaryContact: req.body?.primaryContact || {},
-    secondaryContact: req.body?.secondaryContact || {},
-    requiredDocuments: req.body?.requiredDocuments || [],
-  };
+    const newUser = {
+      id: `client-${Date.now()}`,
+      name,
+      email,
+      passwordHash,
+      role: "Client",
+      company,
+      area: req.body?.address?.state || "Unknown",
+      status: "Active",
+      verification: "Pending",
+      avatarTone: "bg-cyan-100 text-cyan-700",
+      organization: req.body?.organization || {},
+      address: req.body?.address || {},
+      primaryContact: req.body?.primaryContact || {},
+      secondaryContact: req.body?.secondaryContact || {},
+      requiredDocuments: (req.body?.requiredDocuments || []).map(createDocumentRecord),
+      generatedPassword: temporaryPassword,
+    };
 
-  await mutateStore((store) => {
-    store.users.unshift(newUser);
-  });
+    await mutateStore((store) => {
+      store.users.unshift(newUser);
+    });
 
-  return ok(
-    res,
-    {
-      userId: newUser.id,
-      role: newUser.role,
-      status: newUser.status,
-      verified: false,
-      passwordResetRequired: true,
-    },
-    "Client created successfully",
-    201
-  );
-});
+    return ok(
+      res,
+      {
+        userId: newUser.id,
+        role: newUser.role,
+        status: newUser.status,
+        verified: false,
+        temporaryPassword,
+        passwordResetRequired: true,
+      },
+      "Client created successfully",
+      201
+    );
+  }
+);
 
 usersRouter.post("/admin/users/notary", requireAdminAuth, async (req, res) => {
   const email = String(req.body?.loginEmail || req.body?.personalInfo?.email || "").trim().toLowerCase();
