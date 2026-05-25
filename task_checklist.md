@@ -38,7 +38,7 @@ Use this checklist to track project completion.
 
 # 3. User Request Module
 
-- [ ] Create UserRequest model
+- [x] Create UserRequest model
 - [x] Build public access request form
 - [x] Build submit request API
 - [x] Set default status as Pending
