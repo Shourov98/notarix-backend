@@ -22,6 +22,27 @@ const buildAdminAuthPayload = (admin) => {
   };
 };
 
+const buildPortalAuthPayload = (user) => {
+  const accessToken = createToken({
+    uid: user.id,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+  });
+  const refreshToken = createRefreshToken();
+
+  return {
+    uid: user.id,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_in: 60 * 60 * 12,
+    passwordResetRequired: Boolean(user.passwordResetRequired),
+  };
+};
+
 export const loginAdmin = async ({ email, password }) => {
   const store = await readStore();
   const admin = store.admins.find((item) => item.email === email);
@@ -40,6 +61,34 @@ export const loginAdmin = async ({ email, password }) => {
     const target = draft.admins.find((item) => item.id === admin.id);
     target.refreshToken = authPayload.refresh_token;
     target.lastSignInAt = new Date().toISOString();
+  });
+
+  return authPayload;
+};
+
+export const loginPortalUser = async ({ email, password, role }) => {
+  const store = await readStore();
+  const expectedRole = role === "client" ? "Client" : "Notary";
+  const user = store.users.find(
+    (item) => item.email === email && item.role === expectedRole
+  );
+
+  const passwordMatches = user?.passwordHash
+    ? await comparePassword(password, user.passwordHash)
+    : false;
+
+  if (!user || !passwordMatches) {
+    return null;
+  }
+
+  const authPayload = buildPortalAuthPayload(user);
+
+  await mutateStore((draft) => {
+    const target = draft.users.find((item) => item.id === user.id);
+    if (target) {
+      target.refreshToken = authPayload.refresh_token;
+      target.lastSignInAt = new Date().toISOString();
+    }
   });
 
   return authPayload;

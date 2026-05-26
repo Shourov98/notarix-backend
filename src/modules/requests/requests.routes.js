@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { mutateStore, readStore } from "../../store.js";
+import mongoose from "mongoose";
 import { requireAdminAuth } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { queueEmail } from "../../shared/notifications/email.service.js";
 import { createNotification } from "../../shared/notifications/notification.service.js";
+import { UserRequestModel } from "./user-request.model.js";
 import {
   createRequestSchema,
   rejectRequestSchema,
@@ -12,7 +13,25 @@ import {
 
 export const requestsRouter = Router();
 
+const ensureRequestsDatabase = (res) => {
+  if (mongoose.connection.readyState !== 1) {
+    fail(
+      res,
+      503,
+      "DATABASE_UNAVAILABLE",
+      "Database is not connected. Requests cannot be processed right now."
+    );
+    return false;
+  }
+
+  return true;
+};
+
 requestsRouter.post("/requests", validate(createRequestSchema), async (req, res) => {
+  if (!ensureRequestsDatabase(res)) {
+    return;
+  }
+
   const {
     name,
     email,
@@ -44,12 +63,9 @@ requestsRouter.post("/requests", validate(createRequestSchema), async (req, res)
     state,
     message,
     status: "Pending",
-    createdAt: new Date().toISOString(),
   };
 
-  await mutateStore((store) => {
-    store.requests.unshift(requestRecord);
-  });
+  await UserRequestModel.create(requestRecord);
 
   await createNotification({
     title: "New access request submitted",
@@ -69,17 +85,26 @@ requestsRouter.post("/requests", validate(createRequestSchema), async (req, res)
 });
 
 requestsRouter.get("/admin/requests", requireAdminAuth, async (req, res) => {
-  const store = await readStore();
+  if (!ensureRequestsDatabase(res)) {
+    return;
+  }
+
   const status = String(req.query.status || "").trim();
-  const results = status
-    ? store.requests.filter((item) => item.status.toLowerCase() === status.toLowerCase())
-    : store.requests;
+  const query = status
+    ? { status: new RegExp(`^${status}$`, "i") }
+    : {};
+  const results = await UserRequestModel.find(query)
+    .sort({ createdAt: -1 })
+    .lean();
   return ok(res, results);
 });
 
 requestsRouter.get("/admin/requests/:id", requireAdminAuth, async (req, res) => {
-  const store = await readStore();
-  const requestItem = store.requests.find((item) => item.id === req.params.id);
+  if (!ensureRequestsDatabase(res)) {
+    return;
+  }
+
+  const requestItem = await UserRequestModel.findOne({ id: req.params.id }).lean();
   if (!requestItem) {
     return fail(res, 404, "REQUEST_NOT_FOUND", "Request not found.");
   }
@@ -87,15 +112,16 @@ requestsRouter.get("/admin/requests/:id", requireAdminAuth, async (req, res) => 
 });
 
 requestsRouter.patch("/admin/requests/:id/approve", requireAdminAuth, async (req, res) => {
+  if (!ensureRequestsDatabase(res)) {
+    return;
+  }
+
   const requestId = req.params.id;
-  const result = await mutateStore((store) => {
-    const requestItem = store.requests.find((item) => item.id === requestId);
-    if (!requestItem) {
-      return null;
-    }
-    requestItem.status = "Approved";
-    return requestItem;
-  });
+  const result = await UserRequestModel.findOneAndUpdate(
+    { id: requestId },
+    { status: "Approved" },
+    { new: true, lean: true }
+  );
 
   if (!result) {
     return fail(res, 404, "REQUEST_NOT_FOUND", "Request not found.");
@@ -122,16 +148,19 @@ requestsRouter.patch("/admin/requests/:id/approve", requireAdminAuth, async (req
 });
 
 requestsRouter.patch("/admin/requests/:id/reject", requireAdminAuth, validate(rejectRequestSchema), async (req, res) => {
+  if (!ensureRequestsDatabase(res)) {
+    return;
+  }
+
   const requestId = req.params.id;
-  const result = await mutateStore((store) => {
-    const requestItem = store.requests.find((item) => item.id === requestId);
-    if (!requestItem) {
-      return null;
-    }
-    requestItem.status = "Rejected";
-    requestItem.rejectionReason = String(req.body?.reason || "");
-    return requestItem;
-  });
+  const result = await UserRequestModel.findOneAndUpdate(
+    { id: requestId },
+    {
+      status: "Rejected",
+      rejectionReason: String(req.body?.reason || ""),
+    },
+    { new: true, lean: true }
+  );
 
   if (!result) {
     return fail(res, 404, "REQUEST_NOT_FOUND", "Request not found.");

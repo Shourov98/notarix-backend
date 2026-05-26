@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 const userRequestSchema = new mongoose.Schema(
   {
+    id: { type: String, required: true, unique: true, index: true },
     name: { type: String, required: true },
     email: { type: String, required: true, lowercase: true, index: true },
     phone: { type: String, default: "" },

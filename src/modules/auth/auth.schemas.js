@@ -9,6 +9,16 @@ export const loginSchema = z.object({
   params: z.object({}).passthrough(),
 });
 
+export const portalLoginSchema = z.object({
+  body: z.object({
+    email: z.string().email(),
+    password: z.string().min(1),
+    role: z.enum(["client", "notary"]),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
 export const emailSchema = z.object({
   body: z.object({
     email: z.string().email(),

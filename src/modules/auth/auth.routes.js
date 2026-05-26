@@ -5,6 +5,7 @@ import {
   getCurrentAdmin,
   issueForgotPasswordOtp,
   loginAdmin,
+  loginPortalUser,
   logoutAdmin,
   refreshAdminSession,
   resendForgotPasswordOtp,
@@ -20,6 +21,7 @@ import {
   firstLoginResetSchema,
   loginSchema,
   logoutSchema,
+  portalLoginSchema,
   refreshSchema,
   resetPasswordSchema,
   verifyOtpSchema,
@@ -31,6 +33,19 @@ authRouter.post("/admin/auth/login", validate(loginSchema), async (req, res) => 
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
   const authPayload = await loginAdmin({ email, password });
+
+  if (!authPayload) {
+    return fail(res, 401, "INVALID_CREDENTIALS", "Invalid email or password.");
+  }
+
+  return ok(res, authPayload, "Login successful");
+});
+
+authRouter.post("/site/auth/login", validate(portalLoginSchema), async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const password = String(req.body?.password || "");
+  const role = String(req.body?.role || "").trim().toLowerCase();
+  const authPayload = await loginPortalUser({ email, password, role });
 
   if (!authPayload) {
     return fail(res, 401, "INVALID_CREDENTIALS", "Invalid email or password.");
