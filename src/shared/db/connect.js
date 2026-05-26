@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { config } from "../../config.js";
+import { seedMongoFromLocalStore } from "./seed.js";
 
 let isConnected = false;
 
@@ -13,6 +14,7 @@ export const connectDatabase = async () => {
       dbName: config.mongodbDbName,
       serverSelectionTimeoutMS: 2000,
     });
+    await seedMongoFromLocalStore();
     isConnected = true;
     console.log(`MongoDB connected: ${config.mongodbDbName}`);
     return mongoose.connection;

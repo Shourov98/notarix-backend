@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { mutateStore, readStore } from "../../store.js";
+import { readStore } from "../../store.js";
 import { fail, ok } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
 import {
@@ -8,6 +8,7 @@ import {
   decryptBankInfo,
   encryptBankInfo,
 } from "../../shared/security/bank-info.js";
+import { UserModel } from "../users/user.model.js";
 
 export const siteRouter = Router();
 
@@ -25,8 +26,6 @@ const siteBankInfoSchema = z.object({
 
 const SITE_CLIENT_ID = "client-001";
 const SITE_NOTARY_ID = "notary-001";
-
-const getPortalUser = (store, userId) => store.users.find((item) => item.id === userId);
 
 siteRouter.get("/site/client/overview", async (_req, res) => {
   const store = await readStore();
@@ -46,8 +45,7 @@ siteRouter.get("/site/notary/overview", async (_req, res) => {
 });
 
 siteRouter.get("/site/client/bank-info", async (_req, res) => {
-  const store = await readStore();
-  const user = getPortalUser(store, SITE_CLIENT_ID);
+  const user = await UserModel.findOne({ id: SITE_CLIENT_ID }).lean();
 
   if (!user) {
     return fail(res, 404, "USER_NOT_FOUND", "Client not found.");
@@ -66,17 +64,17 @@ siteRouter.post(
   validate(siteBankInfoSchema),
   async (req, res) => {
     const encrypted = encryptBankInfo(req.body);
-    const updated = await mutateStore((store) => {
-      const user = getPortalUser(store, SITE_CLIENT_ID);
-      if (!user) {
-        return null;
-      }
-
-      user.bankInfoEncrypted = encrypted.encrypted;
-      user.bankInfoMasked = encrypted.masked;
-      user.bankInfoUpdatedAt = new Date().toISOString();
-      return user;
-    });
+    const updated = await UserModel.findOneAndUpdate(
+      { id: SITE_CLIENT_ID },
+      {
+        $set: {
+          bankInfoEncrypted: encrypted.encrypted,
+          bankInfoMasked: encrypted.masked,
+          bankInfoUpdatedAt: new Date(),
+        },
+      },
+      { new: true }
+    ).lean();
 
     if (!updated) {
       return fail(res, 404, "USER_NOT_FOUND", "Client not found.");
@@ -91,17 +89,17 @@ siteRouter.patch(
   validate(siteBankInfoSchema),
   async (req, res) => {
     const encrypted = encryptBankInfo(req.body);
-    const updated = await mutateStore((store) => {
-      const user = getPortalUser(store, SITE_CLIENT_ID);
-      if (!user) {
-        return null;
-      }
-
-      user.bankInfoEncrypted = encrypted.encrypted;
-      user.bankInfoMasked = encrypted.masked;
-      user.bankInfoUpdatedAt = new Date().toISOString();
-      return user;
-    });
+    const updated = await UserModel.findOneAndUpdate(
+      { id: SITE_CLIENT_ID },
+      {
+        $set: {
+          bankInfoEncrypted: encrypted.encrypted,
+          bankInfoMasked: encrypted.masked,
+          bankInfoUpdatedAt: new Date(),
+        },
+      },
+      { new: true }
+    ).lean();
 
     if (!updated) {
       return fail(res, 404, "USER_NOT_FOUND", "Client not found.");
@@ -112,8 +110,7 @@ siteRouter.patch(
 );
 
 siteRouter.get("/site/notary/bank-info", async (_req, res) => {
-  const store = await readStore();
-  const user = getPortalUser(store, SITE_NOTARY_ID);
+  const user = await UserModel.findOne({ id: SITE_NOTARY_ID }).lean();
 
   if (!user) {
     return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
@@ -132,17 +129,17 @@ siteRouter.post(
   validate(siteBankInfoSchema),
   async (req, res) => {
     const encrypted = encryptBankInfo(req.body);
-    const updated = await mutateStore((store) => {
-      const user = getPortalUser(store, SITE_NOTARY_ID);
-      if (!user) {
-        return null;
-      }
-
-      user.bankInfoEncrypted = encrypted.encrypted;
-      user.bankInfoMasked = encrypted.masked;
-      user.bankInfoUpdatedAt = new Date().toISOString();
-      return user;
-    });
+    const updated = await UserModel.findOneAndUpdate(
+      { id: SITE_NOTARY_ID },
+      {
+        $set: {
+          bankInfoEncrypted: encrypted.encrypted,
+          bankInfoMasked: encrypted.masked,
+          bankInfoUpdatedAt: new Date(),
+        },
+      },
+      { new: true }
+    ).lean();
 
     if (!updated) {
       return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
@@ -157,17 +154,17 @@ siteRouter.patch(
   validate(siteBankInfoSchema),
   async (req, res) => {
     const encrypted = encryptBankInfo(req.body);
-    const updated = await mutateStore((store) => {
-      const user = getPortalUser(store, SITE_NOTARY_ID);
-      if (!user) {
-        return null;
-      }
-
-      user.bankInfoEncrypted = encrypted.encrypted;
-      user.bankInfoMasked = encrypted.masked;
-      user.bankInfoUpdatedAt = new Date().toISOString();
-      return user;
-    });
+    const updated = await UserModel.findOneAndUpdate(
+      { id: SITE_NOTARY_ID },
+      {
+        $set: {
+          bankInfoEncrypted: encrypted.encrypted,
+          bankInfoMasked: encrypted.masked,
+          bankInfoUpdatedAt: new Date(),
+        },
+      },
+      { new: true }
+    ).lean();
 
     if (!updated) {
       return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
@@ -178,8 +175,7 @@ siteRouter.patch(
 );
 
 siteRouter.get("/site/admin/users/:id/bank-info", async (req, res) => {
-  const store = await readStore();
-  const user = store.users.find((item) => item.id === req.params.id);
+  const user = await UserModel.findOne({ id: req.params.id }).lean();
 
   if (!user) {
     return fail(res, 404, "USER_NOT_FOUND", "User not found.");

@@ -1,4 +1,4 @@
-import { mutateStore } from "../../store.js";
+import { NotificationModel } from "./notification.model.js";
 
 export const createNotification = async ({
   title,
@@ -20,9 +20,7 @@ export const createNotification = async ({
     read: false,
   };
 
-  await mutateStore((store) => {
-    store.notifications = [notification, ...(store.notifications || [])];
-  });
+  await NotificationModel.create(notification);
 
   return notification;
 };

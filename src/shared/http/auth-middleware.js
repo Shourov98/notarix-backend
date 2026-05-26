@@ -1,5 +1,6 @@
 import { verifyToken } from "../../auth.js";
-import { readStore } from "../../store.js";
+import { AdminModel } from "../../modules/users/admin.model.js";
+import { UserModel } from "../../modules/users/user.model.js";
 import { fail } from "./respond.js";
 
 const getAuthPayload = (req) => {
@@ -15,11 +16,14 @@ export const requireAdminAuth = async (req, res, next) => {
     return fail(res, 401, "UNAUTHORIZED", "Unauthorized. Please sign in again.");
   }
 
-  const store = await readStore();
-  const admin = store.admins.find((item) => item.id === auth.uid);
+  const admin = await AdminModel.findOne({ id: auth.uid }).lean();
 
   if (!admin) {
     return fail(res, 401, "UNAUTHORIZED", "Admin session is no longer valid.");
+  }
+
+  if (admin.status === "Suspended") {
+    return fail(res, 403, "FORBIDDEN", "This admin account is suspended.");
   }
 
   req.admin = admin;
@@ -45,9 +49,12 @@ export const requireAuthenticatedActor = async (req, res, next) => {
     return fail(res, 401, "UNAUTHORIZED", "Unauthorized. Please sign in again.");
   }
 
-  const store = await readStore();
-  const admin = store.admins.find((item) => item.id === auth.uid);
+  const admin = await AdminModel.findOne({ id: auth.uid }).lean();
   if (admin) {
+    if (admin.status === "Suspended") {
+      return fail(res, 403, "FORBIDDEN", "This admin account is suspended.");
+    }
+
     req.actor = {
       id: admin.id,
       role: admin.role,
@@ -57,7 +64,7 @@ export const requireAuthenticatedActor = async (req, res, next) => {
     return next();
   }
 
-  const user = store.users.find((item) => item.id === auth.uid);
+  const user = await UserModel.findOne({ id: auth.uid }).lean();
   if (!user) {
     return fail(res, 401, "UNAUTHORIZED", "User session is no longer valid.");
   }

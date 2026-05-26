@@ -1,4 +1,4 @@
-import { mutateStore } from "../../store.js";
+import { EmailJobModel } from "./email-job.model.js";
 
 export const queueEmail = async ({
   to,
@@ -18,9 +18,7 @@ export const queueEmail = async ({
     createdAt: new Date().toISOString(),
   };
 
-  await mutateStore((store) => {
-    store.emailQueue = [emailJob, ...(store.emailQueue || [])];
-  });
+  await EmailJobModel.create(emailJob);
 
   console.log(`Email queued for ${to}: ${subject}`);
   return emailJob;

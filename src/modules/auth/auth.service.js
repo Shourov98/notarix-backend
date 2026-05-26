@@ -1,6 +1,7 @@
 import { createRefreshToken, createToken } from "../../auth.js";
-import { mutateStore, readStore } from "../../store.js";
 import { comparePassword, hashPassword } from "../../shared/security/password.js";
+import { AdminModel } from "../users/admin.model.js";
+import { UserModel } from "../users/user.model.js";
 
 const buildAdminAuthPayload = (admin) => {
   const accessToken = createToken({
@@ -44,34 +45,34 @@ const buildPortalAuthPayload = (user) => {
 };
 
 export const loginAdmin = async ({ email, password }) => {
-  const store = await readStore();
-  const admin = store.admins.find((item) => item.email === email);
+  const admin = await AdminModel.findOne({ email }).lean();
 
   const passwordMatches = admin?.passwordHash
     ? await comparePassword(password, admin.passwordHash)
     : false;
 
-  if (!admin || !passwordMatches) {
+  if (!admin || !passwordMatches || admin.status === "Suspended") {
     return null;
   }
 
   const authPayload = buildAdminAuthPayload(admin);
 
-  await mutateStore((draft) => {
-    const target = draft.admins.find((item) => item.id === admin.id);
-    target.refreshToken = authPayload.refresh_token;
-    target.lastSignInAt = new Date().toISOString();
-  });
+  await AdminModel.updateOne(
+    { id: admin.id },
+    {
+      $set: {
+        refreshToken: authPayload.refresh_token,
+        lastSignInAt: new Date(),
+      },
+    }
+  );
 
   return authPayload;
 };
 
 export const loginPortalUser = async ({ email, password, role }) => {
-  const store = await readStore();
   const expectedRole = role === "client" ? "Client" : "Notary";
-  const user = store.users.find(
-    (item) => item.email === email && item.role === expectedRole
-  );
+  const user = await UserModel.findOne({ email, role: expectedRole }).lean();
 
   const passwordMatches = user?.passwordHash
     ? await comparePassword(password, user.passwordHash)
@@ -83,122 +84,136 @@ export const loginPortalUser = async ({ email, password, role }) => {
 
   const authPayload = buildPortalAuthPayload(user);
 
-  await mutateStore((draft) => {
-    const target = draft.users.find((item) => item.id === user.id);
-    if (target) {
-      target.refreshToken = authPayload.refresh_token;
-      target.lastSignInAt = new Date().toISOString();
+  await UserModel.updateOne(
+    { id: user.id },
+    {
+      $set: {
+        refreshToken: authPayload.refresh_token,
+        lastSignInAt: new Date(),
+      },
     }
-  });
+  );
 
   return authPayload;
 };
 
 export const issueForgotPasswordOtp = async (email) => {
-  const store = await readStore();
-  const admin = store.admins.find((item) => item.email === email);
+  const admin = await AdminModel.findOne({ email }).lean();
 
   if (!admin) {
     return null;
   }
 
-  await mutateStore((draft) => {
-    const target = draft.admins.find((item) => item.id === admin.id);
-    target.forgotOtp = "1234";
-    target.forgotOtpVerified = false;
-  });
+  await AdminModel.updateOne(
+    { id: admin.id },
+    {
+      $set: {
+        forgotOtp: "1234",
+        forgotOtpVerified: false,
+      },
+    }
+  );
 
   return { email };
 };
 
 export const resendForgotPasswordOtp = async (email) => {
-  await mutateStore((draft) => {
-    const admin = draft.admins.find((item) => item.email === email);
-    if (admin) {
-      admin.forgotOtp = "1234";
-      admin.forgotOtpVerified = false;
+  await AdminModel.updateOne(
+    { email },
+    {
+      $set: {
+        forgotOtp: "1234",
+        forgotOtpVerified: false,
+      },
     }
-  });
+  );
 
   return { email };
 };
 
 export const verifyForgotPasswordOtp = async ({ email, otp }) => {
-  const store = await readStore();
-  const admin = store.admins.find((item) => item.email === email);
+  const admin = await AdminModel.findOne({ email }).lean();
 
   if (!admin || admin.forgotOtp !== otp) {
     return null;
   }
 
-  await mutateStore((draft) => {
-    const target = draft.admins.find((item) => item.id === admin.id);
-    target.forgotOtpVerified = true;
-  });
+  await AdminModel.updateOne(
+    { id: admin.id },
+    {
+      $set: {
+        forgotOtpVerified: true,
+      },
+    }
+  );
 
   return { email, is_verified: true };
 };
 
 export const resetAdminPassword = async ({ email, newPassword }) => {
-  const store = await readStore();
-  const admin = store.admins.find((item) => item.email === email);
+  const admin = await AdminModel.findOne({ email }).lean();
 
   if (!admin || !admin.forgotOtpVerified) {
     return null;
   }
 
-  await mutateStore((draft) => {
-    const target = draft.admins.find((item) => item.id === admin.id);
-    target.passwordHash = null;
-    target.forgotOtp = null;
-    target.forgotOtpVerified = false;
-  });
-
   const nextHash = await hashPassword(newPassword);
 
-  await mutateStore((draft) => {
-    const target = draft.admins.find((item) => item.id === admin.id);
-    target.passwordHash = nextHash;
-  });
+  await AdminModel.updateOne(
+    { id: admin.id },
+    {
+      $set: {
+        passwordHash: nextHash,
+        forgotOtp: null,
+        forgotOtpVerified: false,
+      },
+    }
+  );
 
   return { email };
 };
 
 export const logoutAdmin = async ({ adminId, refreshToken }) => {
-  await mutateStore((draft) => {
-    const target = draft.admins.find(
-      (item) => item.id === adminId || (refreshToken && item.refreshToken === refreshToken)
-    );
-
-    if (target) {
-      target.refreshToken = null;
+  await AdminModel.updateMany(
+    {
+      $or: [
+        { id: adminId },
+        ...(refreshToken ? [{ refreshToken }] : []),
+      ],
+    },
+    {
+      $set: {
+        refreshToken: null,
+      },
     }
-  });
+  );
 
   return { ok: true };
 };
 
 export const refreshAdminSession = async (refreshToken) => {
-  const store = await readStore();
-  const admin = store.admins.find((item) => item.refreshToken === refreshToken);
+  const admin = await AdminModel.findOne({ refreshToken }).lean();
 
-  if (!admin) {
+  if (!admin || admin.status === "Suspended") {
     return null;
   }
 
   const authPayload = buildAdminAuthPayload(admin);
 
-  await mutateStore((draft) => {
-    const target = draft.admins.find((item) => item.id === admin.id);
-    target.refreshToken = authPayload.refresh_token;
-  });
+  await AdminModel.updateOne(
+    { id: admin.id },
+    {
+      $set: {
+        refreshToken: authPayload.refresh_token,
+      },
+    }
+  );
 
   return authPayload;
 };
 
 export const changeAdminPassword = async ({ adminId, currentPassword, newPassword }) => {
-  const store = await readStore();
-  const admin = store.admins.find((item) => item.id === adminId);
+  const admin = await AdminModel.findOne({ id: adminId }).lean();
 
   const matches = admin?.passwordHash
     ? await comparePassword(currentPassword, admin.passwordHash)
@@ -210,10 +225,14 @@ export const changeAdminPassword = async ({ adminId, currentPassword, newPasswor
 
   const nextHash = await hashPassword(newPassword);
 
-  await mutateStore((draft) => {
-    const target = draft.admins.find((item) => item.id === adminId);
-    target.passwordHash = nextHash;
-  });
+  await AdminModel.updateOne(
+    { id: adminId },
+    {
+      $set: {
+        passwordHash: nextHash,
+      },
+    }
+  );
 
   return true;
 };
@@ -221,20 +240,21 @@ export const changeAdminPassword = async ({ adminId, currentPassword, newPasswor
 export const firstLoginResetPassword = async ({ adminId, newPassword }) => {
   const nextHash = await hashPassword(newPassword);
 
-  await mutateStore((draft) => {
-    const target = draft.admins.find((item) => item.id === adminId);
-    if (target) {
-      target.passwordHash = nextHash;
-      target.passwordResetRequired = false;
+  await AdminModel.updateOne(
+    { id: adminId },
+    {
+      $set: {
+        passwordHash: nextHash,
+        passwordResetRequired: false,
+      },
     }
-  });
+  );
 
   return { ok: true };
 };
 
 export const getCurrentAdmin = async (adminId) => {
-  const store = await readStore();
-  const admin = store.admins.find((item) => item.id === adminId);
+  const admin = await AdminModel.findOne({ id: adminId }).lean();
 
   if (!admin) {
     return null;

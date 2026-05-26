@@ -1,7 +1,6 @@
 import { Router } from "express";
 import crypto from "node:crypto";
 import { z } from "zod";
-import { mutateStore, readStore } from "../../store.js";
 import {
   requireAdminAuth,
   requireAuthenticatedActor,
@@ -17,8 +16,24 @@ import {
 } from "../../shared/security/bank-info.js";
 import { hashPassword } from "../../shared/security/password.js";
 import { upload } from "../../shared/storage/upload.js";
+import { AdminModel } from "./admin.model.js";
+import { UserModel } from "./user.model.js";
 
 export const usersRouter = Router();
+
+const REQUIRED_NOTARY_DOCUMENTS = [
+  "Commission Certificate",
+  "E&O Insurance",
+  "Background Check",
+  "Government ID",
+];
+
+const ADMIN_PERMISSIONS = [
+  "manage_orders",
+  "manage_payments",
+  "manage_users",
+  "access_reports",
+];
 
 const adminCreateSchema = z.object({
   body: z.object({
@@ -26,6 +41,7 @@ const adminCreateSchema = z.object({
     email: z.string().email(),
     role: z.enum(["admin", "super_admin"]).default("admin"),
     phone: z.string().min(7).optional(),
+    permissions: z.array(z.enum(ADMIN_PERMISSIONS)).optional(),
   }),
   query: z.object({}).passthrough(),
   params: z.object({}).passthrough(),
@@ -69,6 +85,7 @@ const clientCreateSchema = z.object({
         phone: z.string().optional(),
       })
       .optional(),
+    passwordResetRequired: z.boolean().optional(),
     requiredDocuments: z.array(requiredDocumentSchema).optional(),
     sendInviteEmail: z.boolean().optional(),
   }),
@@ -99,6 +116,8 @@ const notaryCreateSchema = z.object({
       travelRadius: z.string().optional(),
       coverageAreas: z.string().optional(),
     }),
+    passwordResetRequired: z.boolean().optional(),
+    ronEligible: z.boolean().optional(),
     requiredDocuments: z.array(requiredDocumentSchema).optional(),
     sendInviteEmail: z.boolean().optional(),
   }),
@@ -168,29 +187,70 @@ const upsertRequiredDocument = (documents, nextDocument) => {
   };
 };
 
+const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+
+const normalizeAdminPermissions = (permissions = [], role = "admin") =>
+  role === "super_admin"
+    ? [...ADMIN_PERMISSIONS]
+    : [...new Set((permissions || []).filter((item) => ADMIN_PERMISSIONS.includes(item)))];
+
+const ensureUniqueUserEmail = async (email) => {
+  const [existingUser, existingAdmin] = await Promise.all([
+    UserModel.findOne({ email }).lean(),
+    AdminModel.findOne({ email }).lean(),
+  ]);
+  return !(existingUser || existingAdmin);
+};
+
+const hasAllRequiredNotaryDocuments = (documents = []) =>
+  REQUIRED_NOTARY_DOCUMENTS.every((title) =>
+    documents.some(
+      (document) =>
+        document?.title === title &&
+        document?.file &&
+        document?.status !== "Missing"
+    )
+  );
+
+const listMissingNotaryDocuments = (documents = []) =>
+  REQUIRED_NOTARY_DOCUMENTS.filter(
+    (title) =>
+      !documents.some(
+        (document) =>
+          document?.title === title &&
+          document?.file &&
+          document?.status !== "Missing"
+      )
+  );
+
 usersRouter.get("/admin/users", requireAdminAuth, async (req, res) => {
-  const store = await readStore();
   const search = String(req.query.search || "").trim().toLowerCase();
   const role = String(req.query.role || "").trim().toLowerCase();
   const status = String(req.query.status || "").trim().toLowerCase();
 
-  const filtered = store.users.filter((item) => {
-    const matchesSearch =
-      !search ||
-      [item.name, item.email, item.company, item.area]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(search));
-    const matchesRole = !role || item.role.toLowerCase() === role;
-    const matchesStatus = !status || item.status.toLowerCase() === status;
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+  const query = {};
+  if (role) {
+    query.role = new RegExp(`^${role}$`, "i");
+  }
+  if (status) {
+    query.status = new RegExp(`^${status}$`, "i");
+  }
+  if (search) {
+    query.$or = [
+      { name: { $regex: search, $options: "i" } },
+      { email: { $regex: search, $options: "i" } },
+      { company: { $regex: search, $options: "i" } },
+      { area: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  const filtered = await UserModel.find(query).sort({ createdAt: -1 }).lean();
 
   return ok(res, filtered);
 });
 
 usersRouter.get("/admin/users/:id", requireAdminAuth, async (req, res) => {
-  const store = await readStore();
-  const user = store.users.find((item) => item.id === req.params.id);
+  const user = await UserModel.findOne({ id: req.params.id }).lean();
 
   if (!user) {
     return fail(res, 404, "USER_NOT_FOUND", "User not found.");
@@ -204,15 +264,19 @@ usersRouter.post(
   requireAdminAuth,
   validate(clientCreateSchema),
   async (req, res) => {
-    const email = String(
+    const email = normalizeEmail(
       req.body?.loginEmail || req.body?.primaryContact?.email || ""
-    )
-      .trim()
-      .toLowerCase();
+    );
     const name = String(req.body?.primaryContact?.name || "New Client");
     const company = String(
       req.body?.organization?.companyName || "New Organization"
     );
+    const isUniqueEmail = await ensureUniqueUserEmail(email);
+
+    if (!isUniqueEmail) {
+      return fail(res, 409, "EMAIL_ALREADY_EXISTS", "An account with that email already exists.");
+    }
+
     const temporaryPassword = crypto.randomBytes(6).toString("base64url");
     const passwordHash = await hashPassword(temporaryPassword);
 
@@ -221,7 +285,7 @@ usersRouter.post(
       name,
       email,
       passwordHash,
-      passwordResetRequired: true,
+      passwordResetRequired: req.body?.passwordResetRequired !== false,
       role: "Client",
       company,
       area: req.body?.address?.state || "Unknown",
@@ -233,12 +297,9 @@ usersRouter.post(
       primaryContact: req.body?.primaryContact || {},
       secondaryContact: req.body?.secondaryContact || {},
       requiredDocuments: (req.body?.requiredDocuments || []).map(createDocumentRecord),
-      generatedPassword: temporaryPassword,
     };
 
-    await mutateStore((store) => {
-      store.users.unshift(newUser);
-    });
+    await UserModel.create(newUser);
 
     await queueEmail({
       to: email,
@@ -280,12 +341,26 @@ usersRouter.post(
   requireAdminAuth,
   validate(notaryCreateSchema),
   async (req, res) => {
-    const email = String(
+    const email = normalizeEmail(
       req.body?.loginEmail || req.body?.personalInfo?.email || ""
-    )
-      .trim()
-      .toLowerCase();
+    );
     const name = String(req.body?.personalInfo?.fullName || "New Notary");
+    const isUniqueEmail = await ensureUniqueUserEmail(email);
+
+    if (!isUniqueEmail) {
+      return fail(res, 409, "EMAIL_ALREADY_EXISTS", "An account with that email already exists.");
+    }
+
+    if (!hasAllRequiredNotaryDocuments(req.body?.requiredDocuments || [])) {
+      return fail(
+        res,
+        400,
+        "MISSING_REQUIRED_DOCUMENTS",
+        "All required notary documents must be uploaded before creating the account.",
+        { missingDocuments: listMissingNotaryDocuments(req.body?.requiredDocuments || []) }
+      );
+    }
+
     const temporaryPassword = crypto.randomBytes(6).toString("base64url");
     const passwordHash = await hashPassword(temporaryPassword);
 
@@ -294,7 +369,7 @@ usersRouter.post(
       name,
       email,
       passwordHash,
-      passwordResetRequired: true,
+      passwordResetRequired: req.body?.passwordResetRequired !== false,
       role: "Notary",
       company: name,
       area: req.body?.address?.state || "Unknown",
@@ -304,13 +379,12 @@ usersRouter.post(
       personalInfo: req.body?.personalInfo || {},
       commission: req.body?.commission || {},
       address: req.body?.address || {},
+      ronEligible: req.body?.ronEligible !== false,
+      specialties: req.body?.ronEligible === false ? [] : ["RON"],
       requiredDocuments: (req.body?.requiredDocuments || []).map(createDocumentRecord),
-      generatedPassword: temporaryPassword,
     };
 
-    await mutateStore((store) => {
-      store.users.unshift(newUser);
-    });
+    await UserModel.create(newUser);
 
     await queueEmail({
       to: email,
@@ -353,13 +427,29 @@ usersRouter.post(
   requireAdminRole("super_admin"),
   validate(adminCreateSchema),
   async (req, res) => {
-    const store = await readStore();
     const email = String(req.body.email || "").trim().toLowerCase();
 
-    const existingAdmin = store.admins.find((item) => item.email === email);
+    const [existingAdmin, existingUser] = await Promise.all([
+      AdminModel.findOne({ email }).lean(),
+      UserModel.findOne({ email }).lean(),
+    ]);
 
-    if (existingAdmin) {
-      return fail(res, 409, "ADMIN_ALREADY_EXISTS", "An admin with that email already exists.");
+    if (existingAdmin || existingUser) {
+      return fail(res, 409, "EMAIL_ALREADY_EXISTS", "An account with that email already exists.");
+    }
+
+    const permissions = normalizeAdminPermissions(
+      req.body.permissions,
+      req.body.role
+    );
+
+    if (req.body.role === "admin" && permissions.length === 0) {
+      return fail(
+        res,
+        400,
+        "MISSING_PERMISSIONS",
+        "Select at least one permission for a standard admin account."
+      );
     }
 
     const temporaryPassword = crypto.randomBytes(6).toString("base64url");
@@ -371,6 +461,7 @@ usersRouter.post(
       email,
       passwordHash,
       role: req.body.role,
+      permissions,
       isVerified: true,
       passwordResetRequired: true,
       phone: req.body.phone || null,
@@ -384,9 +475,7 @@ usersRouter.post(
       createdAt: new Date().toISOString(),
     };
 
-    await mutateStore((draft) => {
-      draft.admins.push(newAdmin);
-    });
+    await AdminModel.create(newAdmin);
 
     return ok(
       res,
@@ -394,6 +483,7 @@ usersRouter.post(
         adminId: newAdmin.id,
         email: newAdmin.email,
         role: newAdmin.role,
+        permissions: newAdmin.permissions,
         passwordResetRequired: true,
         temporaryPassword,
       },
@@ -403,16 +493,79 @@ usersRouter.post(
   }
 );
 
+usersRouter.get(
+  "/admin/admins",
+  requireAdminAuth,
+  requireAdminRole("super_admin"),
+  async (_req, res) => {
+    const adminRecords = await AdminModel.find()
+      .sort({ createdAt: -1 })
+      .lean();
+    const admins = adminRecords.map((admin) => ({
+      id: admin.id,
+      name: admin.name,
+      email: admin.email,
+      role: admin.role,
+      permissions: normalizeAdminPermissions(admin.permissions, admin.role),
+      status: admin.status || "Active",
+      phone: admin.phone || null,
+      lastSignInAt: admin.lastSignInAt || null,
+      createdAt: admin.createdAt || null,
+    }));
+
+    return ok(res, admins);
+  }
+);
+
+const updateAdminStatus = async (adminId, nextStatus) =>
+  AdminModel.findOneAndUpdate(
+    { id: adminId },
+    { $set: { status: nextStatus } },
+    { new: true }
+  ).lean();
+
+usersRouter.patch(
+  "/admin/admins/:id/suspend",
+  requireAdminAuth,
+  requireAdminRole("super_admin"),
+  async (req, res) => {
+    if (req.admin.id === req.params.id) {
+      return fail(res, 400, "INVALID_ACTION", "You cannot suspend your own account.");
+    }
+
+    const updated = await updateAdminStatus(req.params.id, "Suspended");
+
+    if (!updated) {
+      return fail(res, 404, "ADMIN_NOT_FOUND", "Admin not found.");
+    }
+
+    return ok(res, updated, "Admin suspended successfully.");
+  }
+);
+
+usersRouter.patch(
+  "/admin/admins/:id/activate",
+  requireAdminAuth,
+  requireAdminRole("super_admin"),
+  async (req, res) => {
+    const updated = await updateAdminStatus(req.params.id, "Active");
+
+    if (!updated) {
+      return fail(res, 404, "ADMIN_NOT_FOUND", "Admin not found.");
+    }
+
+    return ok(res, updated, "Admin activated successfully.");
+  }
+);
+
 usersRouter.patch("/admin/users/:id/status", requireAdminAuth, async (req, res) => {
   const nextStatus = String(req.body?.status || "");
-  const updated = await mutateStore((store) => {
-    const user = store.users.find((item) => item.id === req.params.id);
-    if (!user) {
-      return null;
-    }
-    user.status = nextStatus || user.status;
-    return user;
-  });
+  const update = nextStatus ? { status: nextStatus } : {};
+  const updated = await UserModel.findOneAndUpdate(
+    { id: req.params.id },
+    { $set: update },
+    { new: true }
+  ).lean();
 
   if (!updated) {
     return fail(res, 404, "USER_NOT_FOUND", "User not found.");
@@ -430,8 +583,7 @@ usersRouter.post(
       return fail(res, 403, "FORBIDDEN", "Only users can save bank info here.");
     }
 
-    const current = await readStore();
-    const existingUser = current.users.find((item) => item.id === req.actor.id);
+    const existingUser = await UserModel.findOne({ id: req.actor.id }).lean();
     if (existingUser?.bankInfoEncrypted) {
       return fail(
         res,
@@ -442,17 +594,17 @@ usersRouter.post(
     }
 
     const encrypted = encryptBankInfo(req.body);
-    const updated = await mutateStore((store) => {
-      const user = store.users.find((item) => item.id === req.actor.id);
-      if (!user) {
-        return null;
-      }
-
-      user.bankInfoEncrypted = encrypted.encrypted;
-      user.bankInfoMasked = encrypted.masked;
-      user.bankInfoUpdatedAt = new Date().toISOString();
-      return user;
-    });
+    const updated = await UserModel.findOneAndUpdate(
+      { id: req.actor.id },
+      {
+        $set: {
+          bankInfoEncrypted: encrypted.encrypted,
+          bankInfoMasked: encrypted.masked,
+          bankInfoUpdatedAt: new Date(),
+        },
+      },
+      { new: true }
+    ).lean();
 
     if (!updated) {
       return fail(res, 404, "USER_NOT_FOUND", "User not found.");
@@ -472,17 +624,17 @@ usersRouter.patch(
     }
 
     const encrypted = encryptBankInfo(req.body);
-    const updated = await mutateStore((store) => {
-      const user = store.users.find((item) => item.id === req.actor.id);
-      if (!user) {
-        return null;
-      }
-
-      user.bankInfoEncrypted = encrypted.encrypted;
-      user.bankInfoMasked = encrypted.masked;
-      user.bankInfoUpdatedAt = new Date().toISOString();
-      return user;
-    });
+    const updated = await UserModel.findOneAndUpdate(
+      { id: req.actor.id },
+      {
+        $set: {
+          bankInfoEncrypted: encrypted.encrypted,
+          bankInfoMasked: encrypted.masked,
+          bankInfoUpdatedAt: new Date(),
+        },
+      },
+      { new: true }
+    ).lean();
 
     if (!updated) {
       return fail(res, 404, "USER_NOT_FOUND", "User not found.");
@@ -497,8 +649,7 @@ usersRouter.get("/users/bank-info", requireAuthenticatedActor, async (req, res) 
     return fail(res, 403, "FORBIDDEN", "Only users can access bank info here.");
   }
 
-  const store = await readStore();
-  const user = store.users.find((item) => item.id === req.actor.id);
+  const user = await UserModel.findOne({ id: req.actor.id }).lean();
 
   if (!user) {
     return fail(res, 404, "USER_NOT_FOUND", "User not found.");
@@ -513,8 +664,7 @@ usersRouter.get("/users/bank-info", requireAuthenticatedActor, async (req, res) 
 });
 
 usersRouter.get("/admin/users/:id/bank-info", requireAdminAuth, async (req, res) => {
-  const store = await readStore();
-  const user = store.users.find((item) => item.id === req.params.id);
+  const user = await UserModel.findOne({ id: req.params.id }).lean();
 
   if (!user) {
     return fail(res, 404, "USER_NOT_FOUND", "User not found.");
@@ -529,15 +679,11 @@ usersRouter.get("/admin/users/:id/bank-info", requireAdminAuth, async (req, res)
 });
 
 const updateUserLifecycleStatus = async (userId, nextStatus) =>
-  mutateStore((store) => {
-    const user = store.users.find((item) => item.id === userId);
-    if (!user) {
-      return null;
-    }
-
-    user.status = nextStatus;
-    return user;
-  });
+  UserModel.findOneAndUpdate(
+    { id: userId },
+    { $set: { status: nextStatus } },
+    { new: true }
+  ).lean();
 
 usersRouter.patch("/admin/users/:id/suspend", requireAdminAuth, async (req, res) => {
   const updated = await updateUserLifecycleStatus(req.params.id, "Suspended");
@@ -571,30 +717,32 @@ usersRouter.post(
       : rawTitles
         ? [rawTitles]
         : [];
-    const updated = await mutateStore((store) => {
-      const user = store.users.find((item) => item.id === req.params.id);
-      if (!user) {
-        return null;
-      }
+    const user = await UserModel.findOne({ id: req.params.id }).lean();
 
-      const existingDocuments = [...(user.requiredDocuments || [])];
-      files.forEach((file, index) => {
-        const title = documentTitles[index] || file.originalname;
-        upsertRequiredDocument(
-          existingDocuments,
-          createDocumentRecord({
-            title,
-            status: "Pending",
-            file: file.filename,
-            mimeType: file.mimetype,
-            size: file.size,
-          })
-        );
-      });
+    if (!user) {
+      return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+    }
 
-      user.requiredDocuments = existingDocuments;
-      return user;
+    const existingDocuments = [...(user.requiredDocuments || [])];
+    files.forEach((file, index) => {
+      const title = documentTitles[index] || file.originalname;
+      upsertRequiredDocument(
+        existingDocuments,
+        createDocumentRecord({
+          title,
+          status: "Pending",
+          file: file.filename,
+          mimeType: file.mimetype,
+          size: file.size,
+        })
+      );
     });
+
+    const updated = await UserModel.findOneAndUpdate(
+      { id: req.params.id },
+      { $set: { requiredDocuments: existingDocuments } },
+      { new: true }
+    ).lean();
 
     if (!updated) {
       return fail(res, 404, "USER_NOT_FOUND", "User not found.");
@@ -605,8 +753,7 @@ usersRouter.post(
 );
 
 usersRouter.get("/admin/users/:id/documents", requireAdminAuth, async (req, res) => {
-  const store = await readStore();
-  const user = store.users.find((item) => item.id === req.params.id);
+  const user = await UserModel.findOne({ id: req.params.id }).lean();
 
   if (!user) {
     return fail(res, 404, "USER_NOT_FOUND", "User not found.");
@@ -620,36 +767,31 @@ usersRouter.patch(
   requireAdminAuth,
   validate(userDocumentStatusSchema),
   async (req, res) => {
-    const updated = await mutateStore((store) => {
-      const user = store.users.find((item) => item.id === req.params.id);
-      if (!user) {
-        return null;
-      }
+    const user = await UserModel.findOne({ id: req.params.id }).lean();
 
-      const document = (user.requiredDocuments || []).find(
-        (item) => item.id === req.params.documentId
-      );
-
-      if (!document) {
-        return false;
-      }
-
-      document.status = req.body.status;
-      if (req.body.status === "Missing") {
-        document.file = null;
-        document.mimeType = undefined;
-        document.size = undefined;
-      }
-      return user;
-    });
-
-    if (updated === null) {
+    if (!user) {
       return fail(res, 404, "USER_NOT_FOUND", "User not found.");
     }
 
-    if (updated === false) {
+    const nextDocuments = [...(user.requiredDocuments || [])];
+    const document = nextDocuments.find((item) => item.id === req.params.documentId);
+
+    if (!document) {
       return fail(res, 404, "DOCUMENT_NOT_FOUND", "Document not found.");
     }
+
+    document.status = req.body.status;
+    if (req.body.status === "Missing") {
+      document.file = null;
+      document.mimeType = null;
+      document.size = null;
+    }
+
+    const updated = await UserModel.findOneAndUpdate(
+      { id: req.params.id },
+      { $set: { requiredDocuments: nextDocuments } },
+      { new: true }
+    ).lean();
 
     return ok(res, updated.requiredDocuments || [], "Document status updated.");
   }
