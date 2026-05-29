@@ -118,39 +118,39 @@ Use this checklist to track project completion.
 
 # 8. Client Order Module
 
-- [ ] Build Create New Order page
-- [ ] Add client/vendor information section
-- [ ] Add borrower information section
-- [ ] Add property details section
-- [ ] Add signing date/time section
-- [ ] Add service details section
-- [ ] Add special instructions field
-- [ ] Add order document upload
-- [ ] Build create order API
-- [ ] Set initial status as Pending Admin Review
+- [x] Build Create New Order page
+- [x] Add client/vendor information section
+- [x] Add borrower information section
+- [x] Add property details section
+- [x] Add signing date/time section
+- [x] Add service details section
+- [x] Add special instructions field
+- [x] Add order document upload
+- [x] Build create order API
+- [x] Set initial status as Pending Admin Review
 - [ ] Notify admin after order creation
-- [ ] Build client order list page
-- [ ] Build client order detail page
+- [x] Build client order list page
+- [x] Build client order detail page
 
 ---
 
 # 9. Admin Order Management Module
 
-- [ ] Build Order Management dashboard
+- [x] Build Order Management dashboard
 - [x] Show total orders
 - [x] Show pending orders
 - [x] Show assigned orders
 - [x] Show in-progress orders
 - [x] Show completed orders
-- [ ] Build order filters
-- [ ] Build order search
+- [x] Build order filters
+- [x] Build order search
 - [x] Build admin order details page
-- [ ] Build accept order API
-- [ ] Build reject order API
+- [x] Build accept order API
+- [x] Build reject order API
 - [x] Build eligible notaries API
 - [x] Build assign notary API
-- [ ] Build reassign notary API
-- [ ] Add payment terms while assigning notary
+- [x] Build reassign notary API
+- [x] Add payment terms while assigning notary
 - [ ] Create conversation after notary assignment
 - [ ] Notify notary after assignment
 
@@ -177,17 +177,17 @@ Use this checklist to track project completion.
 
 # 11. Order Status Flow
 
-- [ ] Add Pending Admin Review status
-- [ ] Add Accepted By Admin status
-- [ ] Add Rejected By Admin status
-- [ ] Add Notary Assigned status
+- [x] Add Pending Admin Review status
+- [x] Add Accepted By Admin status
+- [x] Add Rejected By Admin status
+- [x] Add Notary Assigned status
 - [ ] Add Accepted By Notary status
 - [ ] Add Rejected By Notary status
-- [ ] Add Needs Reassignment status
-- [ ] Add In Progress status
-- [ ] Add Completed status
-- [ ] Add Cancelled status
-- [ ] Add audit log for each status change
+- [x] Add Needs Reassignment status
+- [x] Add In Progress status
+- [x] Add Completed status
+- [x] Add Cancelled status
+- [x] Add audit log for each status change
 
 ---
 
@@ -255,7 +255,7 @@ Use this checklist to track project completion.
 - [ ] Validate file types
 - [ ] Validate file size
 - [ ] Upload user verification documents
-- [ ] Upload order documents
+- [x] Upload order documents
 - [ ] Upload completed documents
 - [ ] Upload message attachments
 - [ ] Store file metadata

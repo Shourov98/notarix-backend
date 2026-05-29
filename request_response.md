@@ -1,6 +1,6 @@
 # Notarix API Request & Response Examples
 
-Base URL: `/api`
+Base URL: `/api/v1`
 
 ---
 
@@ -315,7 +315,7 @@ Base URL: `/api`
 
 # 5. Orders
 
-## POST `/orders`
+## POST `/site/orders`
 
 ### Request
 
@@ -323,30 +323,25 @@ Base URL: `/api`
 {
   "vendorCode": "VC-1001",
   "serviceType": "Loan Signing",
-  "borrower": {
-    "firstName": "Sarah",
-    "lastName": "Mitchell",
-    "phone": "+1-555-444-2222",
-    "email": "sarah@example.com",
-    "secondarySigner": "Robert Mitchell"
-  },
-  "property": {
-    "address": "789 Pine Road",
+  "signerFirstName": "Sarah",
+  "signerLastName": "Mitchell",
+  "signerPhone": "+1-555-444-2222",
+  "signerEmail": "sarah@example.com",
+  "hasSecondarySigner": true,
+  "propertyAddress": {
+    "line1": "789 Pine Road",
     "city": "Austin",
     "state": "Texas",
-    "zip": "73301"
-  },
-  "signing": {
-    "date": "2026-06-01",
-    "time": "14:30",
+    "zip": "73301",
     "timeZone": "America/Chicago"
   },
-  "serviceDetails": {
-    "paperSize": "Letter",
-    "inkColor": "Blue",
-    "estimatedPages": 120,
-    "ronRequired": false
-  },
+  "signingDate": "2026-06-01",
+  "signingTime": "14:30",
+  "feeAmount": 150,
+  "paperSize": "Letter",
+  "preferredInk": "Blue",
+  "estimatedPages": "120",
+  "isRon": false,
   "specialInstructions": "Borrower prefers afternoon appointment."
 }
 ```
@@ -358,9 +353,47 @@ Base URL: `/api`
   "success": true,
   "message": "Order created successfully",
   "data": {
-    "orderId": "RON-9402",
-    "id": "665f1a100000000000000007",
-    "status": "Pending Admin Review"
+    "orderId": "ORD-1779814869049",
+    "status": "Pending",
+    "workflowStatus": "Pending Admin Review"
+  }
+}
+```
+
+---
+
+## GET `/site/client/orders/:id`
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "#ORD-1779814869049",
+    "rawId": "ORD-1779814869049",
+    "client": "Order Client Co",
+    "clientEmail": "portal.client@example.com",
+    "borrower": "Sarah Mitchell",
+    "borrowerEmail": "sarah@example.com",
+    "borrowerPhone": "+1-555-444-2222",
+    "service": "Loan Signing",
+    "status": "Pending",
+    "workflowStatus": "Pending Admin Review",
+    "propertyAddress": {
+      "line1": "789 Pine Road",
+      "city": "Austin",
+      "state": "Texas",
+      "zip": "73301",
+      "timeZone": "America/Chicago"
+    },
+    "documents": [],
+    "timeline": [
+      {
+        "status": "Pending Admin Review",
+        "note": "Order submitted by client."
+      }
+    ]
   }
 }
 ```
@@ -369,22 +402,16 @@ Base URL: `/api`
 
 ## PATCH `/admin/orders/:id/accept`
 
-### Request
-
-```json
-{
-  "adminNotes": "Order details verified. Ready for notary assignment."
-}
-```
-
 ### Response
 
 ```json
 {
   "success": true,
-  "message": "Order accepted by admin",
+  "message": "Order accepted successfully.",
   "data": {
-    "orderId": "RON-9402",
+    "id": "#ORD-1779814869049",
+    "rawId": "ORD-1779814869049",
+    "client": "Order Client Co",
     "status": "Accepted By Admin"
   }
 }
@@ -426,13 +453,15 @@ Base URL: `/api`
   "success": true,
   "data": [
     {
-      "id": "665f1a100000000000000005",
+      "id": "notary-1779800000000",
       "name": "Marcus Webb",
       "email": "marcus@example.com",
-      "state": "Texas",
-      "coverageAreas": ["Dallas County", "Collin County"],
-      "verified": true,
-      "activeAssignments": 3
+      "phone": "+1-555-999-1000",
+      "location": "Texas",
+      "radius": "50",
+      "status": "Pending",
+      "jobs": "4 verified documents",
+      "tags": ["RON"]
     }
   ]
 }
@@ -446,11 +475,10 @@ Base URL: `/api`
 
 ```json
 {
-  "notaryId": "665f1a100000000000000005",
-  "totalAmount": 300,
-  "notaryPayoutAmount": 150,
-  "payoutReleaseDays": 30,
-  "paymentNotes": "Notary will be paid 30 days after order completion."
+  "notaryId": "notary-1779800000000",
+  "notaryOfferAmount": 120,
+  "payoutReleaseDays": 7,
+  "assignmentNotes": "Offer expires if not accepted by end of day."
 }
 ```
 
@@ -461,16 +489,15 @@ Base URL: `/api`
   "success": true,
   "message": "Notary assigned successfully",
   "data": {
-    "orderId": "RON-9402",
+    "id": "#ORD-1779814869049",
+    "rawId": "ORD-1779814869049",
     "status": "Notary Assigned",
-    "notaryId": "665f1a100000000000000005",
-    "conversationId": "665f1a100000000000000008",
+    "notaryId": "notary-1779800000000",
     "payment": {
-      "totalAmount": 300,
-      "notaryPayoutAmount": 150,
-      "adminRevenue": 150,
-      "payoutReleaseDays": 30,
-      "notaryPayoutStatus": "Payout Scheduled"
+      "feeAmount": 150,
+      "notaryOfferAmount": 120,
+      "payoutReleaseDays": 7,
+      "assignmentNotes": "Offer expires if not accepted by end of day."
     }
   }
 }

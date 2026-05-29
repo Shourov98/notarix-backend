@@ -1,6 +1,6 @@
 # Notarix API List
 
-Base URL: `/api`
+Base URL: `/api/v1`
 
 ## 1. Authentication APIs
 
@@ -60,12 +60,10 @@ Base URL: `/api`
 
 | Method | Endpoint | Access | Purpose |
 |---|---|---|---|
-| POST | `/orders` | Client | Create new order |
-| GET | `/orders` | Authenticated | Get own/role-based orders |
-| GET | `/orders/:id` | Authenticated | Get order details |
-| POST | `/orders/:id/documents` | Client/Admin/Notary | Upload order document |
-| GET | `/orders/:id/documents` | Participants/Admin | Get order documents |
-| PATCH | `/orders/:id/cancel` | Client/Admin | Cancel order |
+| POST | `/site/orders` | Client | Create new order |
+| GET | `/site/client/orders` | Client | Get own client order list |
+| GET | `/site/client/orders/:id` | Client | Get own order details |
+| POST | `/site/orders/:id/documents` | Client | Upload order documents |
 
 ---
 
@@ -73,7 +71,7 @@ Base URL: `/api`
 
 | Method | Endpoint | Access | Purpose |
 |---|---|---|---|
-| GET | `/admin/orders` | Admin/Super Admin | Get all orders |
+| GET | `/admin/orders` | Admin/Super Admin | Get all orders (supports `search`, `status`, `serviceType`) |
 | GET | `/admin/orders/:id` | Admin/Super Admin | Get order details |
 | PATCH | `/admin/orders/:id/accept` | Admin/Super Admin | Accept client order |
 | PATCH | `/admin/orders/:id/reject` | Admin/Super Admin | Reject client order |

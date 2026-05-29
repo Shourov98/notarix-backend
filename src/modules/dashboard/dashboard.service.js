@@ -1,6 +1,21 @@
 const formatAdminRole = (role) =>
   String(role || "admin").replaceAll("_", " ").toUpperCase();
 
+const ensureDisplayOrderId = (value) =>
+  String(value || "").startsWith("#") ? String(value) : `#${value}`;
+
+const isPendingOrder = (status) =>
+  [
+    "Pending",
+    "Pending Admin Review",
+    "Accepted By Admin",
+    "Rejected By Admin",
+    "Needs Reassignment",
+  ].includes(status);
+
+const isAssignedOrder = (status) =>
+  ["Assigned", "Notary Assigned", "Accepted By Notary"].includes(status);
+
 const buildAdminRows = (store) =>
   (store.admins || []).map((admin) => ({
     id: admin.id,
@@ -78,12 +93,12 @@ export const summarizeAdminConsole = (store, currentAdmin) => {
 
   const totalOrders = store.orders.length;
   const activeOrders = store.orders.filter((item) =>
-    ["Assigned", "In Progress"].includes(item.status)
+    isAssignedOrder(item.status) || item.status === "In Progress"
   ).length;
   const completedOrders = store.orders.filter(
     (item) => item.status === "Completed"
   ).length;
-  const pendingOrders = store.orders.filter((item) => item.status === "Pending").length;
+  const pendingOrders = store.orders.filter((item) => isPendingOrder(item.status)).length;
   const totalAdmins = store.admins.length;
 
   const resolvedAdmin = currentAdmin || store.admins[0] || null;
@@ -121,7 +136,7 @@ export const summarizeAdminConsole = (store, currentAdmin) => {
       metrics,
     }),
     recentOrders: store.orders.slice(0, 3).map((order) => ({
-      id: `#${order.id}`,
+      id: ensureDisplayOrderId(order.id),
       client: order.client,
       notary: order.notary,
       service: order.type,
@@ -131,7 +146,7 @@ export const summarizeAdminConsole = (store, currentAdmin) => {
     users: store.users,
     orders: store.orders.map((item) => ({
       ...item,
-      id: `#${item.id}`,
+      id: ensureDisplayOrderId(item.id),
     })),
     notaries: store.notaries,
     documents: store.documents.map((item) => ({
