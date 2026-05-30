@@ -12,6 +12,7 @@ const requiredDocumentSchema = new mongoose.Schema(
     file: { type: String, default: null },
     mimeType: { type: String, default: null },
     size: { type: Number, default: null },
+    uploadedAt: { type: Date, default: Date.now },
   },
   { _id: false }
 );
@@ -45,6 +46,7 @@ const userSchema = new mongoose.Schema(
     status: { type: String, default: "Active" },
     verification: { type: String, default: "Pending" },
     authProvider: { type: String, default: "local" },
+    avatar: { type: String, default: null },
     company: { type: String, default: "" },
     area: { type: String, default: "" },
     avatarTone: { type: String, default: "" },

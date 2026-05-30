@@ -6,13 +6,17 @@ Base URL: `/api/v1`
 
 | Method | Endpoint | Access | Purpose |
 |---|---|---|---|
-| POST | `/auth/login` | Public | Login user |
-| POST | `/auth/logout` | Authenticated | Logout user |
-| POST | `/auth/refresh-token` | Public/Auth | Refresh JWT token |
-| PATCH | `/auth/reset-password` | Authenticated | Change password after first login |
-| POST | `/auth/forgot-password` | Public | Request password reset link |
-| PATCH | `/auth/forgot-password/reset` | Public | Reset password using token |
-| GET | `/auth/me` | Authenticated | Get current logged-in user |
+| POST | `/admin/auth/login` | Public | Login admin or super admin |
+| POST | `/site/auth/login` | Public | Login client or notary |
+| POST | `/admin/auth/logout` | Admin/Super Admin | Logout admin |
+| POST | `/admin/auth/refresh` | Public/Auth | Refresh admin session token |
+| PATCH | `/auth/reset-password` | Admin/Super Admin | Change admin password after first login |
+| PATCH | `/site/auth/reset-password` | Client/Notary | Change portal password after first login |
+| POST | `/admin/auth/forgot-password` | Public | Request admin password reset OTP |
+| POST | `/admin/auth/resend-forgot-otp` | Public | Resend admin password reset OTP |
+| POST | `/admin/auth/verify-forgot-otp` | Public | Verify admin password reset OTP |
+| POST | `/admin/auth/reset-password` | Public | Complete admin forgot-password reset |
+| GET | `/auth/me` | Admin/Super Admin | Get current logged-in admin |
 
 ---
 
@@ -49,10 +53,13 @@ Base URL: `/api/v1`
 
 | Method | Endpoint | Access | Purpose |
 |---|---|---|---|
-| POST | `/users/bank-info` | Authenticated | Add bank information |
-| GET | `/users/bank-info` | Authenticated | Get own bank information |
-| PATCH | `/users/bank-info` | Authenticated | Update own bank information |
-| GET | `/admin/users/:id/bank-info` | Admin/Super Admin | View user bank information |
+| GET | `/site/client/bank-info` | Client | Get own bank information |
+| POST | `/site/client/bank-info` | Client | Add own bank information |
+| PATCH | `/site/client/bank-info` | Client | Update own bank information |
+| GET | `/site/notary/bank-info` | Notary | Get own bank information |
+| POST | `/site/notary/bank-info` | Notary | Add own bank information |
+| PATCH | `/site/notary/bank-info` | Notary | Update own bank information |
+| GET | `/site/admin/users/:id/bank-info` | Admin/Super Admin | View masked user bank information |
 
 ---
 
@@ -104,7 +111,7 @@ Base URL: `/api/v1`
 | GET | `/conversations/order/:orderId` | Order participants/Admin | Get order conversation |
 | GET | `/conversations/:id/messages` | Participants/Admin | Get messages |
 | POST | `/conversations/:id/messages` | Participants/Admin | Send text message |
-| POST | `/messages/:id/attachments` | Participants/Admin | Upload message attachments |
+| POST | `/conversations/:id/attachments` | Participants/Admin | Upload message attachments |
 | PATCH | `/messages/:id/read` | Participants/Admin | Mark message read |
 
 ---
@@ -118,8 +125,8 @@ Base URL: `/api/v1`
 | PATCH | `/admin/orders/:id/payment-terms` | Admin/Super Admin | Update payment terms |
 | PATCH | `/admin/orders/:id/payment-status` | Admin/Super Admin | Update manual payment status |
 | POST | `/admin/orders/:id/payment-proof` | Admin/Super Admin | Upload bank transfer proof |
-| GET | `/notary/payments` | Notary | Get notary payout records |
-| GET | `/client/payments` | Client | Get client payment records |
+| GET | `/site/notary/payments` | Notary | Get notary payout records |
+| GET | `/site/client/payments` | Client | Get client payment records |
 
 ---
 
@@ -133,20 +140,33 @@ Base URL: `/api/v1`
 
 ---
 
-## 11. Reports & Audit APIs
+## 11. Secure File APIs
 
 | Method | Endpoint | Access | Purpose |
 |---|---|---|---|
-| GET | `/admin/dashboard/stats` | Admin/Super Admin | Dashboard statistics |
-| GET | `/admin/reports/orders` | Admin/Super Admin | Order reports |
-| GET | `/admin/reports/payments` | Admin/Super Admin | Payment reports |
-| GET | `/admin/audit-logs` | Admin/Super Admin | Get audit logs |
-| GET | `/admin/export/orders` | Admin/Super Admin | Export orders CSV |
-| GET | `/admin/export/payments` | Admin/Super Admin | Export payments CSV |
+| GET | `/files/users/:userId/avatar` | Owner/Admin | View or download profile photo |
+| GET | `/files/users/:userId/documents/:documentId` | Owner/Admin | View or download verification document |
+| GET | `/files/orders/:orderId/:bucket/:documentId` | Order participants/Admin | View or download order/completed document |
+| GET | `/files/conversations/:conversationId/attachments/:attachmentId` | Participants/Admin | View or download message attachment |
+| GET | `/files/payments/:orderId/:target/proof` | Related actor/Admin | View or download payment proof |
 
 ---
 
-## 12. Socket Events
+## 12. Reports & Audit APIs
+
+| Method | Endpoint | Access | Purpose |
+|---|---|---|---|
+| GET | `/admin/dashboard/stats` | Admin/Super Admin | Legacy dashboard statistics |
+| GET | `/admin/reports/dashboard-stats` | Admin/Super Admin | Live reporting dashboard statistics with date filters |
+| GET | `/admin/reports/orders` | Admin/Super Admin | Order reports with JSON or CSV export |
+| GET | `/admin/reports/payments` | Admin/Super Admin | Payment reports with JSON or CSV export |
+| GET | `/admin/reports/notaries` | Admin/Super Admin | Notary performance report |
+| GET | `/admin/reports/clients` | Admin/Super Admin | Client activity report |
+| GET | `/admin/audit-logs` | Admin/Super Admin | Get audit logs |
+
+---
+
+## 13. Socket Events
 
 | Event | Direction | Purpose |
 |---|---|---|
@@ -155,4 +175,4 @@ Base URL: `/api/v1`
 | `new_message` | Server to Client | Receive new message |
 | `order_status_updated` | Server to Client | Real-time order update |
 | `assignment_updated` | Server to Client | Real-time notary assignment update |
-| `notification_created` | Server to Client | Receive notification |
+| `new_notification` | Server to Client | Receive notification |

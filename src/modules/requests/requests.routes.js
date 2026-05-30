@@ -5,6 +5,7 @@ import { fail, ok } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { queueEmail } from "../../shared/notifications/email.service.js";
 import { createNotification } from "../../shared/notifications/notification.service.js";
+import { createAuditLog } from "../audit/audit.service.js";
 import { UserRequestModel } from "./user-request.model.js";
 import {
   createRequestSchema,
@@ -76,6 +77,20 @@ requestsRouter.post("/requests", validate(createRequestSchema), async (req, res)
     entityId: requestRecord.id,
   });
 
+  await createAuditLog({
+    action: "request.created",
+    entityType: "user_request",
+    entityId: requestRecord.id,
+    title: "Access request submitted",
+    summary: `${requestRecord.name} submitted an access request.`,
+    actor: { id: requestRecord.id, role: "public", type: "public" },
+    metadata: {
+      email: requestRecord.email,
+      contactType: requestRecord.contactType,
+      requestType: requestRecord.requestType,
+    },
+  });
+
   return ok(
     res,
     { requestId: requestRecord.id, status: requestRecord.status },
@@ -127,21 +142,22 @@ requestsRouter.patch("/admin/requests/:id/approve", requireAdminAuth, async (req
     return fail(res, 404, "REQUEST_NOT_FOUND", "Request not found.");
   }
 
-  await createNotification({
-    title: "Your access request was approved",
-    meta: `${result.requestType} request approved`,
-    action: "Check your email",
-    audience: "user",
-    entityType: "user_request",
-    entityId: requestId,
-  });
-
   await queueEmail({
     to: result.email,
     subject: "Your Notarix access request was approved",
     text: `Hello ${result.name}, your ${result.requestType} request has been approved.`,
     html: `<p>Hello ${result.name},</p><p>Your ${result.requestType} request has been approved.</p>`,
     category: "user-request-approved",
+  });
+
+  await createAuditLog({
+    action: "request.approved",
+    entityType: "user_request",
+    entityId: requestId,
+    title: "Access request approved",
+    summary: `${result.email} request approved by admin.`,
+    actor: req.admin,
+    metadata: { requestType: result.requestType },
   });
 
   return ok(res, { requestId, status: "Approved" }, "Request approved successfully.");
@@ -166,21 +182,22 @@ requestsRouter.patch("/admin/requests/:id/reject", requireAdminAuth, validate(re
     return fail(res, 404, "REQUEST_NOT_FOUND", "Request not found.");
   }
 
-  await createNotification({
-    title: "Your access request was rejected",
-    meta: `${result.requestType} request rejected`,
-    action: "Review the rejection reason",
-    audience: "user",
-    entityType: "user_request",
-    entityId: requestId,
-  });
-
   await queueEmail({
     to: result.email,
     subject: "Your Notarix access request was rejected",
     text: `Hello ${result.name}, your ${result.requestType} request was rejected. Reason: ${result.rejectionReason}`,
     html: `<p>Hello ${result.name},</p><p>Your ${result.requestType} request was rejected.</p><p>Reason: ${result.rejectionReason}</p>`,
     category: "user-request-rejected",
+  });
+
+  await createAuditLog({
+    action: "request.rejected",
+    entityType: "user_request",
+    entityId: requestId,
+    title: "Access request rejected",
+    summary: `${result.email} request rejected by admin.`,
+    actor: req.admin,
+    metadata: { requestType: result.requestType, rejectionReason: result.rejectionReason },
   });
 
   return ok(res, { requestId, status: "Rejected" }, "Request rejected successfully.");

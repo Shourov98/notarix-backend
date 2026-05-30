@@ -6,7 +6,7 @@ Base URL: `/api/v1`
 
 # 1. Authentication
 
-## POST `/auth/login`
+## POST `/admin/auth/login`
 
 ### Request
 
@@ -24,31 +24,59 @@ Base URL: `/api/v1`
   "success": true,
   "message": "Login successful",
   "data": {
-    "accessToken": "jwt_access_token",
-    "refreshToken": "jwt_refresh_token",
-    "passwordResetRequired": true,
-    "user": {
-      "id": "665f1a100000000000000001",
-      "name": "John Client",
-      "email": "client@example.com",
-      "role": "Client",
-      "status": "Active",
-      "verified": true
-    }
+    "uid": "admin-1717000000000",
+    "email": "admin@notarix.io",
+    "role": "super_admin",
+    "is_verified": true,
+    "access_token": "jwt_access_token",
+    "refresh_token": "jwt_refresh_token",
+    "expires_in": 43200
   }
 }
 ```
 
 ---
 
-## PATCH `/auth/reset-password`
+## POST `/site/auth/login`
 
 ### Request
 
 ```json
 {
-  "currentPassword": "TempPassword123",
-  "newPassword": "NewSecurePassword123"
+  "email": "client@example.com",
+  "password": "TempPassword123",
+  "role": "client"
+}
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "uid": "client-1717000000000",
+    "email": "client@example.com",
+    "role": "Client",
+    "status": "Active",
+    "access_token": "jwt_access_token",
+    "refresh_token": "jwt_refresh_token",
+    "expires_in": 43200,
+    "passwordResetRequired": true
+  }
+}
+```
+
+---
+
+## PATCH `/site/auth/reset-password`
+
+### Request
+
+```json
+{
+  "new_password": "NewSecurePassword123"
 }
 ```
 
@@ -281,7 +309,7 @@ Base URL: `/api/v1`
 
 # 4. Bank Information
 
-## POST `/users/bank-info`
+## PATCH `/site/client/bank-info`
 
 ### Request
 
@@ -289,11 +317,9 @@ Base URL: `/api/v1`
 {
   "accountHolderName": "John Smith",
   "bankName": "Bank of America",
-  "bankBranch": "Austin Downtown Branch",
   "routingNumber": "111000025",
   "accountNumber": "1234567890",
-  "bankCode": "BOFAUS3N",
-  "accountType": "Checking"
+  "accountType": "checking"
 }
 ```
 
@@ -302,11 +328,13 @@ Base URL: `/api/v1`
 ```json
 {
   "success": true,
-  "message": "Bank information saved successfully",
+  "message": "Bank info updated successfully.",
   "data": {
-    "bankInfoId": "665f1a100000000000000006",
-    "accountNumberLast4": "7890",
-    "bankName": "Bank of America"
+    "bankName": "Bank of America",
+    "accountHolderName": "John Smith",
+    "accountType": "checking",
+    "routingNumber": "*****0025",
+    "accountNumber": "******7890"
   }
 }
 ```
@@ -611,6 +639,56 @@ Base URL: `/api/v1`
 
 # 7. Messaging
 
+## GET `/conversations`
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "OK",
+  "data": [
+    {
+      "id": "conv-1780119204143-d82b2eda",
+      "orderId": "ORD-1780119202820",
+      "title": "Messaging Client Co · Jordan Miles",
+      "lastMessageAt": "2026-05-30T09:06:46.127Z",
+      "lastMessagePreview": "Admin attachment upload verification.",
+      "participants": [
+        {
+          "actorId": "adm-001",
+          "actorType": "admin",
+          "role": "super_admin",
+          "name": "Alexander Sterling",
+          "email": "admin@notarix.io"
+        },
+        {
+          "actorId": "usr-client-001",
+          "actorType": "user",
+          "role": "Client",
+          "name": "Client Contact",
+          "email": "msg.client.1780119202820@example.com"
+        },
+        {
+          "actorId": "usr-notary-001",
+          "actorType": "user",
+          "role": "Notary",
+          "name": "Messaging Notary",
+          "email": "msg.notary.1780119202820@example.com"
+        }
+      ],
+      "counterpart": {
+        "name": "Client Contact",
+        "role": "Client",
+        "email": "msg.client.1780119202820@example.com"
+      }
+    }
+  ]
+}
+```
+
+---
+
 ## GET `/conversations/order/:orderId`
 
 ### Response
@@ -618,24 +696,78 @@ Base URL: `/api/v1`
 ```json
 {
   "success": true,
+  "message": "OK",
   "data": {
-    "conversationId": "665f1a100000000000000008",
-    "orderId": "665f1a100000000000000007",
+    "id": "conv-1780119204143-d82b2eda",
+    "orderId": "ORD-1780119202820",
+    "title": "Messaging Client Co · Jordan Miles",
+    "lastMessageAt": "2026-05-30T09:06:46.127Z",
+    "lastMessagePreview": "Admin attachment upload verification.",
     "participants": [
       {
-        "id": "665f1a100000000000000003",
-        "name": "John Client",
+        "actorId": "usr-client-001",
+        "actorType": "user",
+        "name": "Client Contact",
         "role": "Client"
       },
       {
-        "id": "665f1a100000000000000009",
-        "name": "Admin User",
-        "role": "Admin"
+        "actorId": "adm-001",
+        "actorType": "admin",
+        "name": "Alexander Sterling",
+        "role": "super_admin"
       },
       {
-        "id": "665f1a100000000000000005",
-        "name": "Marcus Webb",
+        "actorId": "usr-notary-001",
+        "actorType": "user",
+        "name": "Messaging Notary",
         "role": "Notary"
+      }
+    ],
+    "counterpart": {
+      "name": "Client Contact",
+      "role": "Client",
+      "email": "msg.client.1780119202820@example.com"
+    }
+  }
+}
+```
+
+---
+
+## GET `/conversations/:id/messages`
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "conversation": {
+      "id": "conv-1780119204143-d82b2eda",
+      "orderId": "ORD-1780119202820",
+      "title": "Messaging Client Co · Jordan Miles"
+    },
+    "messages": [
+      {
+        "id": "msg-1780119205691-d9786c31",
+        "conversationId": "conv-1780119204143-d82b2eda",
+        "orderId": "ORD-1780119202820",
+        "senderId": "adm-001",
+        "senderRole": "super_admin",
+        "senderName": "Alexander Sterling",
+        "body": "Admin live message for verification.",
+        "attachments": [],
+        "createdAt": "2026-05-30T09:06:45.693Z",
+        "isOwnMessage": true,
+        "isRead": true,
+        "readBy": [
+          {
+            "actorId": "adm-001",
+            "actorType": "admin",
+            "readAt": "2026-05-30T09:06:45.692Z"
+          }
+        ]
       }
     ]
   }
@@ -650,8 +782,7 @@ Base URL: `/api/v1`
 
 ```json
 {
-  "messageType": "text",
-  "message": "Hello, I have uploaded the required document."
+  "body": "Hello, I have uploaded the required document."
 }
 ```
 
@@ -660,27 +791,41 @@ Base URL: `/api/v1`
 ```json
 {
   "success": true,
-  "message": "Message sent",
+  "message": "Message sent successfully.",
   "data": {
-    "messageId": "665f1a100000000000000010",
-    "conversationId": "665f1a100000000000000008",
-    "messageType": "text",
-    "message": "Hello, I have uploaded the required document.",
-    "createdAt": "2026-06-01T12:00:00.000Z"
+    "id": "msg-1780119205691-d9786c31",
+    "conversationId": "conv-1780119204143-d82b2eda",
+    "orderId": "ORD-1780119202820",
+    "senderId": "adm-001",
+    "senderRole": "super_admin",
+    "senderName": "Alexander Sterling",
+    "body": "Hello, I have uploaded the required document.",
+    "attachments": [],
+    "createdAt": "2026-05-30T09:06:45.693Z",
+    "isOwnMessage": true,
+    "isRead": true,
+    "readBy": [
+      {
+        "actorId": "adm-001",
+        "actorType": "admin",
+        "readAt": "2026-05-30T09:06:45.692Z"
+      }
+    ]
   }
 }
 ```
 
 ---
 
-## POST `/messages/:id/attachments`
+## POST `/conversations/:id/attachments`
 
 Content-Type: `multipart/form-data`
 
 ### Request Fields
 
 ```text
-files: [document.pdf, image.png]
+attachments: [sample.png, sample.pdf]
+body: Admin attachment upload verification.
 ```
 
 ### Response
@@ -688,15 +833,76 @@ files: [document.pdf, image.png]
 ```json
 {
   "success": true,
-  "message": "Attachments uploaded",
-  "data": [
-    {
-      "fileName": "document.pdf",
-      "fileType": "application/pdf",
-      "fileSize": 250000,
-      "fileUrl": "https://storage.example.com/document.pdf"
-    }
-  ]
+  "message": "Attachments uploaded successfully.",
+  "data": {
+    "id": "msg-1780119206125-36b9ab10",
+    "conversationId": "conv-1780119204143-d82b2eda",
+    "orderId": "ORD-1780119202820",
+    "senderId": "adm-001",
+    "senderRole": "super_admin",
+    "senderName": "Alexander Sterling",
+    "body": "Admin attachment upload verification.",
+    "attachments": [
+      {
+        "id": "att-1780119206120-1ccdfc50",
+        "name": "sample.png",
+        "url": "/uploads/1748596012094-sample.png",
+        "mimeType": "image/png",
+        "size": 67,
+        "kind": "image"
+      },
+      {
+        "id": "att-1780119206121-8f1d5f8d",
+        "name": "sample.pdf",
+        "url": "/uploads/1748596012095-sample.pdf",
+        "mimeType": "application/pdf",
+        "size": 54,
+        "kind": "file"
+      }
+    ],
+    "createdAt": "2026-05-30T09:06:46.127Z",
+    "isOwnMessage": true,
+    "isRead": true,
+    "readBy": [
+      {
+        "actorId": "adm-001",
+        "actorType": "admin",
+        "readAt": "2026-05-30T09:06:46.126Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## PATCH `/messages/:id/read`
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Message marked as read.",
+  "data": {
+    "id": "msg-1780119206125-36b9ab10",
+    "conversationId": "conv-1780119204143-d82b2eda",
+    "orderId": "ORD-1780119202820",
+    "senderId": "adm-001",
+    "senderRole": "super_admin",
+    "senderName": "Alexander Sterling",
+    "body": "Admin attachment upload verification.",
+    "attachments": [
+      {
+        "id": "att-1780119206120-1ccdfc50",
+        "name": "sample.png",
+        "url": "/uploads/1748596012094-sample.png",
+        "mimeType": "image/png",
+        "size": 67,
+        "kind": "image"
+      }
+    ]
+  }
 }
 ```
 
@@ -704,16 +910,53 @@ files: [document.pdf, image.png]
 
 # 8. Manual Payment
 
-## PATCH `/admin/orders/:id/payment-status`
+## GET `/admin/payments`
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "summary": {
+      "totalClientRevenue": 210,
+      "totalNotaryPayouts": 110,
+      "totalCompanyRevenue": 100,
+      "pendingInbound": 0,
+      "pendingOutbound": 0
+    },
+    "payments": [
+      {
+        "id": "pay-ORD-1780120651222-notary",
+        "paymentId": "pay-ORD-1780120651222",
+        "orderId": "#ORD-1780120651222",
+        "direction": "Outbound",
+        "counterpartyName": "Payment Notary",
+        "amountLabel": "$110.00",
+        "status": "Paid",
+        "method": "ACH",
+        "target": "notary"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## PATCH `/admin/orders/:id/payment-terms`
 
 ### Request
 
 ```json
 {
-  "clientPaymentStatus": "Client Paid",
-  "notaryPayoutStatus": "Payout Scheduled",
-  "bankReference": "TXN-123456",
-  "notes": "Manual bank transfer confirmed by admin."
+  "totalClientAmount": 210,
+  "notaryPayoutAmount": 110,
+  "payoutReleaseDays": 6,
+  "clientPaymentMethod": "Bank Transfer",
+  "clientDueDate": "2026-06-18",
+  "notes": "Updated manual payment terms"
 }
 ```
 
@@ -722,12 +965,132 @@ files: [document.pdf, image.png]
 ```json
 {
   "success": true,
-  "message": "Payment status updated",
+  "message": "Payment terms updated successfully.",
+  "data": {
+    "orderId": "ORD-1780120651222",
+    "totalClientAmount": 210,
+    "notaryPayoutAmount": 110,
+    "companyRevenueAmount": 100
+  }
+}
+```
+
+---
+
+## PATCH `/admin/orders/:id/payment-status`
+
+### Request
+
+```json
+{
+  "target": "client",
+  "status": "Received",
+  "method": "Bank Transfer",
+  "transactionReference": "CLI-1780120651222",
+  "notes": "Manual bank transfer confirmed by admin.",
+  "paidDate": "2026-06-18"
+}
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Payment status updated successfully.",
   "data": {
     "orderId": "RON-9402",
-    "clientPaymentStatus": "Client Paid",
-    "notaryPayoutStatus": "Payout Scheduled",
-    "bankReference": "TXN-123456"
+    "clientPayment": {
+      "status": "Received",
+      "method": "Bank Transfer",
+      "transactionReference": "CLI-1780120651222"
+    }
+  }
+}
+```
+
+---
+
+## POST `/admin/orders/:id/payment-proof`
+
+Content-Type: `multipart/form-data`
+
+### Request Fields
+
+```text
+target: client
+proof: payment-proof.pdf
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Payment proof uploaded successfully.",
+  "data": {
+    "orderId": "ORD-1780120651222",
+    "clientPayment": {
+      "proof": {
+        "name": "payment-proof.pdf",
+        "url": "/uploads/1780120659227-payment-proof.pdf",
+        "mimeType": "application/pdf"
+      }
+    }
+  }
+}
+```
+
+---
+
+## GET `/site/client/payments`
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "summary": {
+      "totalOrderValue": 210,
+      "totalPaid": 210,
+      "pending": 0
+    },
+    "records": [
+      {
+        "orderId": "#ORD-1780120651222",
+        "amountLabel": "$210.00",
+        "status": "Received"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## GET `/site/notary/payments`
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "summary": {
+      "totalEarned": 110,
+      "totalPaid": 110,
+      "pending": 0
+    },
+    "records": [
+      {
+        "orderId": "#ORD-1780120651222",
+        "amountLabel": "$110.00",
+        "status": "Paid"
+      }
+    ]
   }
 }
 ```
@@ -757,7 +1120,120 @@ files: [document.pdf, image.png]
 
 ---
 
-# 10. Standard Error Response
+Notification real-time event:
+
+```text
+Socket event: new_notification
+```
+
+---
+
+# 10. Secure Files
+
+## GET `/files/orders/:orderId/documents/:documentId?mode=view`
+
+Returns the uploaded file inline for authorized actors only.
+
+## GET `/files/orders/:orderId/documents/:documentId?mode=download`
+
+Returns the same file with download disposition for authorized actors only.
+
+The same `mode=view|download` pattern is supported for:
+
+- `/files/users/:userId/avatar`
+- `/files/users/:userId/documents/:documentId`
+- `/files/orders/:orderId/completed-documents/:documentId`
+- `/files/conversations/:conversationId/attachments/:attachmentId`
+- `/files/payments/:orderId/:target/proof`
+
+---
+
+# 11. Audit Logs
+
+## GET `/admin/audit-logs`
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "OK",
+  "data": [
+    {
+      "id": "audit-1780122878702-a91fe2c1",
+      "action": "order.accepted",
+      "entityType": "order",
+      "entityId": "ORD-1780122876436",
+      "actorId": "admin-123",
+      "actorRole": "super_admin",
+      "title": "Order accepted",
+      "summary": "ORD-1780122876436 accepted by admin.",
+      "createdAt": "2026-05-30T06:34:38.702Z"
+    }
+  ]
+}
+```
+
+---
+
+## GET `/admin/reports/dashboard-stats?dateFrom=2026-01-01&dateTo=2026-12-31`
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "summary": {
+      "totalOrders": 24,
+      "completedOrders": 12,
+      "activeOrders": 5,
+      "pendingOrders": 7,
+      "totalRevenue": 3140,
+      "totalPayouts": 1915,
+      "totalProfit": 1225,
+      "totalClients": 6,
+      "totalNotaries": 5
+    },
+    "revenueSeries": [
+      {
+        "label": "MAY",
+        "value": 3140
+      }
+    ],
+    "ordersByStatus": [
+      {
+        "status": "Completed",
+        "count": 12
+      }
+    ],
+    "paymentMethods": [
+      {
+        "method": "ACH",
+        "amount": 1080
+      }
+    ]
+  }
+}
+```
+
+---
+
+## GET `/admin/reports/orders?dateFrom=2026-01-01&dateTo=2026-12-31&format=csv`
+
+### Response
+
+Content-Type: `text/csv`
+
+```csv
+orderId,createdAt,clientName,clientCompany,serviceType,signerName,status,notaryName,feeAmount,city,state,signingDate,signingTime
+ORD-1717000000000,2026-05-30T06:00:00.000Z,Checklist Client,Checklist Closings,Loan Signing,Jamie Accepted,Completed,Checklist Notary,180,Raleigh,NC,2026-06-15,14:30
+```
+
+---
+
+# 12. Standard Error Response
 
 ```json
 {

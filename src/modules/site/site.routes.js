@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { readStore } from "../../store.js";
+import { requireAuthenticatedActor } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
 import {
@@ -24,8 +25,19 @@ const siteBankInfoSchema = z.object({
   params: z.object({}).passthrough(),
 });
 
-const SITE_CLIENT_ID = "client-001";
-const SITE_NOTARY_ID = "notary-001";
+const ensurePortalRole = (req, res, roleLabel) => {
+  if (req.actor?.type !== "user" || req.actor.role !== roleLabel) {
+    fail(
+      res,
+      403,
+      "FORBIDDEN",
+      `Only ${roleLabel.toLowerCase()} users can access this resource.`
+    );
+    return false;
+  }
+
+  return true;
+};
 
 siteRouter.get("/site/client/overview", async (_req, res) => {
   const store = await readStore();
@@ -44,8 +56,12 @@ siteRouter.get("/site/notary/overview", async (_req, res) => {
   return ok(res, store.siteNotary);
 });
 
-siteRouter.get("/site/client/bank-info", async (_req, res) => {
-  const user = await UserModel.findOne({ id: SITE_CLIENT_ID }).lean();
+siteRouter.get("/site/client/bank-info", requireAuthenticatedActor, async (req, res) => {
+  if (!ensurePortalRole(req, res, "Client")) {
+    return;
+  }
+
+  const user = await UserModel.findOne({ id: req.actor.id }).lean();
 
   if (!user) {
     return fail(res, 404, "USER_NOT_FOUND", "Client not found.");
@@ -61,11 +77,16 @@ siteRouter.get("/site/client/bank-info", async (_req, res) => {
 
 siteRouter.post(
   "/site/client/bank-info",
+  requireAuthenticatedActor,
   validate(siteBankInfoSchema),
   async (req, res) => {
+    if (!ensurePortalRole(req, res, "Client")) {
+      return;
+    }
+
     const encrypted = encryptBankInfo(req.body);
     const updated = await UserModel.findOneAndUpdate(
-      { id: SITE_CLIENT_ID },
+      { id: req.actor.id },
       {
         $set: {
           bankInfoEncrypted: encrypted.encrypted,
@@ -86,11 +107,16 @@ siteRouter.post(
 
 siteRouter.patch(
   "/site/client/bank-info",
+  requireAuthenticatedActor,
   validate(siteBankInfoSchema),
   async (req, res) => {
+    if (!ensurePortalRole(req, res, "Client")) {
+      return;
+    }
+
     const encrypted = encryptBankInfo(req.body);
     const updated = await UserModel.findOneAndUpdate(
-      { id: SITE_CLIENT_ID },
+      { id: req.actor.id },
       {
         $set: {
           bankInfoEncrypted: encrypted.encrypted,
@@ -109,8 +135,12 @@ siteRouter.patch(
   }
 );
 
-siteRouter.get("/site/notary/bank-info", async (_req, res) => {
-  const user = await UserModel.findOne({ id: SITE_NOTARY_ID }).lean();
+siteRouter.get("/site/notary/bank-info", requireAuthenticatedActor, async (req, res) => {
+  if (!ensurePortalRole(req, res, "Notary")) {
+    return;
+  }
+
+  const user = await UserModel.findOne({ id: req.actor.id }).lean();
 
   if (!user) {
     return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
@@ -126,11 +156,16 @@ siteRouter.get("/site/notary/bank-info", async (_req, res) => {
 
 siteRouter.post(
   "/site/notary/bank-info",
+  requireAuthenticatedActor,
   validate(siteBankInfoSchema),
   async (req, res) => {
+    if (!ensurePortalRole(req, res, "Notary")) {
+      return;
+    }
+
     const encrypted = encryptBankInfo(req.body);
     const updated = await UserModel.findOneAndUpdate(
-      { id: SITE_NOTARY_ID },
+      { id: req.actor.id },
       {
         $set: {
           bankInfoEncrypted: encrypted.encrypted,
@@ -151,11 +186,16 @@ siteRouter.post(
 
 siteRouter.patch(
   "/site/notary/bank-info",
+  requireAuthenticatedActor,
   validate(siteBankInfoSchema),
   async (req, res) => {
+    if (!ensurePortalRole(req, res, "Notary")) {
+      return;
+    }
+
     const encrypted = encryptBankInfo(req.body);
     const updated = await UserModel.findOneAndUpdate(
-      { id: SITE_NOTARY_ID },
+      { id: req.actor.id },
       {
         $set: {
           bankInfoEncrypted: encrypted.encrypted,

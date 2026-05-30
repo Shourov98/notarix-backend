@@ -10,6 +10,11 @@ import { validate } from "../../shared/middleware/validate.js";
 import { upload } from "../../shared/storage/upload.js";
 import { OrderModel } from "./order.model.js";
 import { UserModel } from "../users/user.model.js";
+import { queueEmail } from "../../shared/notifications/email.service.js";
+import { createNotification } from "../../shared/notifications/notification.service.js";
+import { ensureOrderConversation } from "../messages/messages.service.js";
+import { syncPaymentFromOrder } from "../payments/payment.service.js";
+import { createAuditLog } from "../audit/audit.service.js";
 
 export const ordersRouter = Router();
 
@@ -104,6 +109,22 @@ const assignNotarySchema = z.object({
   params: z.object({ id: z.string().min(1) }),
 });
 
+const notaryActionSchema = z.object({
+  body: z.object({
+    note: z.string().optional(),
+  }).passthrough(),
+  query: z.object({}).passthrough(),
+  params: z.object({ id: z.string().min(1) }),
+});
+
+const notaryRejectSchema = z.object({
+  body: z.object({
+    reason: z.string().min(2),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({ id: z.string().min(1) }),
+});
+
 const normalizeId = (value) => String(value || "").replace(/^#/, "");
 
 const serializeStatus = (status) => {
@@ -122,6 +143,8 @@ const serializeStatus = (status) => {
 };
 
 const buildOrderRoute = (order) => `/orders/${order.id}`;
+const buildClientOrderRoute = (order) => `/dashboard-client/orders/${order.id}`;
+const buildNotaryOrderRoute = (order) => `/dashboard-notary/assignments-orders/${order.id}`;
 
 const buildTimeline = (order) =>
   (order.statusHistory || [])
@@ -180,6 +203,7 @@ const serializeAdminOrderDetail = (order) => ({
     paymentNotes: order.paymentNotes || "",
     notaryOfferAmount: order.notaryOfferAmount,
     payoutReleaseDays: order.payoutReleaseDays,
+    payoutDueDate: order.payoutDueDate || null,
     assignmentNotes: order.assignmentNotes || "",
   },
   preferences: {
@@ -193,16 +217,35 @@ const serializeAdminOrderDetail = (order) => ({
   documents: (order.documents || []).map((document) => ({
     id: document.id,
     name: document.name,
-    url: document.file ? `/uploads/${document.file}` : null,
+    url: document.file
+      ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
+      : null,
+    downloadUrl: document.file
+      ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=download`
+      : null,
     mimeType: document.mimeType || null,
     size: document.size || null,
+    uploadedAt: document.uploadedAt || null,
+  })),
+  completedDocuments: (order.completedDocuments || []).map((document) => ({
+    id: document.id,
+    name: document.name,
+    url: document.file
+      ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
+      : null,
+    downloadUrl: document.file
+      ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=download`
+      : null,
+    mimeType: document.mimeType || null,
+    size: document.size || null,
+    uploadedAt: document.uploadedAt || null,
   })),
   timeline: buildTimeline(order),
 });
 
 const serializeClientOrder = (order) => ({
   id: `#${order.id}`,
-  route: `/dashboard-client/orders/${order.id}`,
+  route: buildClientOrderRoute(order),
   signerName: order.signerName,
   serviceType: order.serviceType,
   location: order.isRon
@@ -220,6 +263,28 @@ const serializeClientOrder = (order) => ({
   notary: order.notary && order.notary !== "Unassigned"
     ? { name: order.notary, avatar: null }
     : null,
+});
+
+const serializeNotaryAssignment = (order) => ({
+  id: `#${order.id}`,
+  rawId: order.id,
+  route: buildNotaryOrderRoute(order),
+  orderType: order.isRon ? "RON" : "In-Person",
+  title: order.clientCompany || order.clientName,
+  borrower: order.signerName,
+  location: order.isRon
+    ? "Remote Online"
+    : [
+        order.propertyAddress?.city,
+        order.propertyAddress?.state,
+        order.propertyAddress?.zip,
+      ]
+        .filter(Boolean)
+        .join(", "),
+  date: `${order.signingDate} ${order.signingTime}`.trim(),
+  fee: `$${Number(order.notaryOfferAmount ?? order.feeAmount ?? 0).toFixed(2)}`,
+  status: order.status,
+  workflowStatus: order.status,
 });
 
 const createStatusHistoryEntry = (status, actor, note = "") => ({
@@ -272,6 +337,9 @@ const buildOrderSearchQuery = ({ search = "", status = "", serviceType = "" }) =
 
 const findOrderById = (id) => OrderModel.findOne({ id: normalizeId(id) });
 
+const findNotaryOrderById = (id, notaryId) =>
+  OrderModel.findOne({ id: normalizeId(id), notaryId });
+
 const updateOrderStatus = async ({ id, status, actor, note = "", extraSet = {} }) =>
   OrderModel.findOneAndUpdate(
     { id: normalizeId(id) },
@@ -286,6 +354,65 @@ const updateOrderStatus = async ({ id, status, actor, note = "", extraSet = {} }
     },
     { new: true }
   ).lean();
+
+const appendOrderDocuments = async ({ orderId, field, files }) =>
+  OrderModel.findOneAndUpdate(
+    { id: normalizeId(orderId) },
+    {
+      $push: {
+        [field]: { $each: files },
+      },
+    },
+    { new: true }
+  ).lean();
+
+const buildPayoutDueDate = (releaseDays = 0) => {
+  const date = new Date();
+  date.setDate(date.getDate() + Number(releaseDays || 0));
+  return date;
+};
+
+const notifyAdmins = async ({ title, meta, action, entityId }) =>
+  createNotification({
+    title,
+    meta,
+    action,
+    audience: "admin",
+    entityType: "order",
+    entityId,
+  });
+
+const notifyUserAudience = async ({
+  title,
+  meta,
+  action,
+  audience,
+  entityId,
+  recipientId = null,
+  recipientType = null,
+}) =>
+  createNotification({
+    title,
+    meta,
+    action,
+    audience,
+    recipientId,
+    recipientType,
+    entityType: "order",
+    entityId,
+  });
+
+const notifySpecificUser = async ({ title, meta, action, userId, entityId }) =>
+  createNotification({
+    title,
+    meta,
+    action,
+    audience: "user",
+    recipientId: userId,
+    recipientType: "user",
+    entityType: "order",
+    entityId,
+  });
 
 ordersRouter.post(
   "/site/orders",
@@ -335,6 +462,24 @@ ordersRouter.post(
       statusHistory: [
         createStatusHistoryEntry(initialStatus, req.actor, "Order submitted by client."),
       ],
+    });
+
+    await notifyAdmins({
+      title: "New order requires review",
+      meta: `${order.clientCompany || order.clientName} · ${order.signerName}`,
+      action: "Review Order",
+      entityId: order.id,
+    });
+
+    await syncPaymentFromOrder(order.toObject());
+    await createAuditLog({
+      action: "order.created",
+      entityType: "order",
+      entityId: order.id,
+      title: "Order created",
+      summary: `${order.clientCompany || order.clientName} submitted a new order.`,
+      actor: req.actor,
+      metadata: { serviceType: order.serviceType, feeAmount: order.feeAmount },
     });
 
     return ok(
@@ -399,6 +544,276 @@ ordersRouter.get(
 );
 
 ordersRouter.get(
+  "/site/notary/overview",
+  requireAuthenticatedActor,
+  async (req, res) => {
+    if (req.actor.type !== "user" || req.actor.role !== "Notary") {
+      return fail(res, 403, "FORBIDDEN", "Only notary users can access this overview.");
+    }
+
+    const notaryOrders = await OrderModel.find({ notaryId: req.actor.id })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const pendingAcceptance = notaryOrders.filter((order) => order.status === "Notary Assigned");
+    const acceptedOrders = notaryOrders.filter((order) => order.status === "Accepted By Notary");
+    const inProgressOrders = notaryOrders.filter((order) => order.status === "In Progress");
+    const completedOrders = notaryOrders.filter((order) => order.status === "Completed");
+
+    return ok(res, {
+      stats: [
+        { label: "Completed Total Assignments", value: String(completedOrders.length) },
+        {
+          label: "Open Assignments",
+          value: String(pendingAcceptance.length + acceptedOrders.length + inProgressOrders.length),
+        },
+        {
+          label: "Total Earnings",
+          value: `$${completedOrders.reduce((total, order) => total + Number(order.notaryOfferAmount ?? order.feeAmount ?? 0), 0).toFixed(2)}`,
+        },
+      ],
+      assignments: [...acceptedOrders, ...inProgressOrders]
+        .slice(0, 6)
+        .map((order) => ({
+          time: order.signingTime,
+          name: order.signerName,
+          detail: order.serviceType,
+          status: order.status,
+        })),
+      requests: pendingAcceptance.map(serializeNotaryAssignment),
+      assignmentOrderStats: [
+        { label: "Total", value: String(notaryOrders.length), sub: "Assigned orders" },
+        { label: "Pending", value: String(pendingAcceptance.length), sub: "Awaiting acceptance" },
+        { label: "In Progress", value: String(inProgressOrders.length), sub: "Currently active" },
+        { label: "Completed", value: String(completedOrders.length), sub: "Successfully signed" },
+      ],
+      assignmentOrders: notaryOrders.map(serializeNotaryAssignment),
+    });
+  }
+);
+
+ordersRouter.get(
+  "/site/notary/assignments",
+  requireAuthenticatedActor,
+  validate(listOrdersSchema),
+  async (req, res) => {
+    if (req.actor.type !== "user" || req.actor.role !== "Notary") {
+      return fail(res, 403, "FORBIDDEN", "Only notary users can access assignments.");
+    }
+
+    const query = {
+      notaryId: req.actor.id,
+      ...buildOrderSearchQuery(req.query),
+    };
+    const orders = await OrderModel.find(query).sort({ createdAt: -1 }).lean();
+    return ok(res, orders.map(serializeNotaryAssignment));
+  }
+);
+
+ordersRouter.get(
+  "/site/notary/assignments/:id",
+  requireAuthenticatedActor,
+  validate(orderIdParamsSchema),
+  async (req, res) => {
+    if (req.actor.type !== "user" || req.actor.role !== "Notary") {
+      return fail(res, 403, "FORBIDDEN", "Only notary users can access assignments.");
+    }
+
+    const order = await findNotaryOrderById(req.params.id, req.actor.id).lean();
+    if (!order) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Assignment not found.");
+    }
+
+    return ok(res, serializeAdminOrderDetail(order));
+  }
+);
+
+ordersRouter.patch(
+  "/site/notary/orders/:id/accept",
+  requireAuthenticatedActor,
+  validate(notaryActionSchema),
+  async (req, res) => {
+    if (req.actor.type !== "user" || req.actor.role !== "Notary") {
+      return fail(res, 403, "FORBIDDEN", "Only notary users can accept assignments.");
+    }
+
+    const current = await findNotaryOrderById(req.params.id, req.actor.id).lean();
+    if (!current) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Assignment not found.");
+    }
+    if (current.status !== "Notary Assigned") {
+      return fail(res, 400, "INVALID_STATUS", "Only newly assigned orders can be accepted.");
+    }
+
+    const updated = await updateOrderStatus({
+      id: req.params.id,
+      status: "Accepted By Notary",
+      actor: req.actor,
+      note: req.body.note || "Assignment accepted by notary.",
+    });
+
+    await notifyAdmins({
+      title: "Notary accepted assignment",
+      meta: `${updated.id} · ${req.actor.record.name}`,
+      action: "View Order",
+      entityId: updated.id,
+    });
+    await createAuditLog({
+      action: "order.notary_accepted",
+      entityType: "order",
+      entityId: updated.id,
+      title: "Notary accepted assignment",
+      summary: `${req.actor.record.name} accepted ${updated.id}.`,
+      actor: req.actor,
+    });
+
+    return ok(res, serializeAdminOrderDetail(updated), "Assignment accepted successfully.");
+  }
+);
+
+ordersRouter.patch(
+  "/site/notary/orders/:id/reject",
+  requireAuthenticatedActor,
+  validate(notaryRejectSchema),
+  async (req, res) => {
+    if (req.actor.type !== "user" || req.actor.role !== "Notary") {
+      return fail(res, 403, "FORBIDDEN", "Only notary users can reject assignments.");
+    }
+
+    const current = await findNotaryOrderById(req.params.id, req.actor.id).lean();
+    if (!current) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Assignment not found.");
+    }
+
+    const rejected = await updateOrderStatus({
+      id: req.params.id,
+      status: "Rejected By Notary",
+      actor: req.actor,
+      note: req.body.reason,
+    });
+
+    const reassignmentReady = await updateOrderStatus({
+      id: req.params.id,
+      status: "Needs Reassignment",
+      actor: req.actor,
+      note: "Order returned to admin for reassignment.",
+      extraSet: {
+        notaryId: null,
+        notary: "Unassigned",
+      },
+    });
+
+    await notifyAdmins({
+      title: "Notary rejected assignment",
+      meta: `${rejected.id} · ${req.actor.record.name}`,
+      action: "Reassign Order",
+      entityId: rejected.id,
+    });
+    await createAuditLog({
+      action: "order.notary_rejected",
+      entityType: "order",
+      entityId: rejected.id,
+      title: "Notary rejected assignment",
+      summary: `${req.actor.record.name} rejected ${rejected.id}.`,
+      actor: req.actor,
+      metadata: { reason: req.body.reason },
+    });
+
+    return ok(res, serializeAdminOrderDetail(reassignmentReady), "Assignment rejected successfully.");
+  }
+);
+
+ordersRouter.patch(
+  "/site/notary/orders/:id/start",
+  requireAuthenticatedActor,
+  validate(notaryActionSchema),
+  async (req, res) => {
+    if (req.actor.type !== "user" || req.actor.role !== "Notary") {
+      return fail(res, 403, "FORBIDDEN", "Only notary users can start assignments.");
+    }
+
+    const current = await findNotaryOrderById(req.params.id, req.actor.id).lean();
+    if (!current) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Assignment not found.");
+    }
+    if (!["Accepted By Notary", "Notary Assigned"].includes(current.status)) {
+      return fail(res, 400, "INVALID_STATUS", "This assignment cannot be started yet.");
+    }
+
+    const updated = await updateOrderStatus({
+      id: req.params.id,
+      status: "In Progress",
+      actor: req.actor,
+      note: req.body.note || "Signing started by notary.",
+    });
+
+    return ok(res, serializeAdminOrderDetail(updated), "Order started successfully.");
+  }
+);
+
+ordersRouter.patch(
+  "/site/notary/orders/:id/complete",
+  requireAuthenticatedActor,
+  validate(notaryActionSchema),
+  async (req, res) => {
+    if (req.actor.type !== "user" || req.actor.role !== "Notary") {
+      return fail(res, 403, "FORBIDDEN", "Only notary users can complete assignments.");
+    }
+
+    const current = await findNotaryOrderById(req.params.id, req.actor.id).lean();
+    if (!current) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Assignment not found.");
+    }
+    if (current.status !== "In Progress") {
+      return fail(res, 400, "INVALID_STATUS", "Only in-progress assignments can be completed.");
+    }
+
+    const updated = await updateOrderStatus({
+      id: req.params.id,
+      status: "Completed",
+      actor: req.actor,
+      note: req.body.note || "Order completed by notary.",
+      extraSet: {
+        payoutDueDate: buildPayoutDueDate(current.payoutReleaseDays || 0),
+      },
+    });
+
+    await notifyAdmins({
+      title: "Order completed by notary",
+      meta: `${updated.id} is ready for review`,
+      action: "Review Completion",
+      entityId: updated.id,
+    });
+    await notifySpecificUser({
+      title: "Your order is complete",
+      meta: `${updated.id} has been completed`,
+      action: "View Order",
+      userId: updated.clientUserId,
+      entityId: updated.id,
+    });
+    await queueEmail({
+      to: updated.clientEmail,
+      subject: "Your Notarix order is complete",
+      text: `Hello, your order ${updated.id} has been completed.`,
+      html: `<p>Hello,</p><p>Your order <strong>${updated.id}</strong> has been completed.</p>`,
+      category: "order-completed",
+    });
+
+    await syncPaymentFromOrder(updated);
+    await createAuditLog({
+      action: "order.completed",
+      entityType: "order",
+      entityId: updated.id,
+      title: "Order completed",
+      summary: `${updated.id} marked completed by notary.`,
+      actor: req.actor,
+    });
+
+    return ok(res, serializeAdminOrderDetail(updated), "Order completed successfully.");
+  }
+);
+
+ordersRouter.get(
   "/admin/orders",
   requireAdminAuth,
   validate(listOrdersSchema),
@@ -440,6 +855,29 @@ ordersRouter.patch(
       return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
     }
 
+    await queueEmail({
+      to: updated.clientEmail,
+      subject: "Your Notarix order was accepted",
+      text: `Hello, your order ${updated.id} has been accepted and is ready for notary assignment.`,
+      html: `<p>Hello,</p><p>Your order <strong>${updated.id}</strong> has been accepted and is ready for notary assignment.</p>`,
+      category: "order-accepted",
+    });
+    await notifySpecificUser({
+      title: "Your order was accepted",
+      meta: `${updated.id} is ready for notary assignment`,
+      action: "View Order",
+      userId: updated.clientUserId,
+      entityId: updated.id,
+    });
+    await createAuditLog({
+      action: "order.accepted",
+      entityType: "order",
+      entityId: updated.id,
+      title: "Order accepted",
+      summary: `${updated.id} accepted by admin.`,
+      actor: req.admin,
+    });
+
     return ok(res, serializeAdminOrderDetail(updated), "Order accepted successfully.");
   }
 );
@@ -464,6 +902,30 @@ ordersRouter.patch(
     if (!updated) {
       return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
     }
+
+    await queueEmail({
+      to: updated.clientEmail,
+      subject: "Your Notarix order was rejected",
+      text: `Hello, your order ${updated.id} was rejected. Reason: ${req.body.reason}`,
+      html: `<p>Hello,</p><p>Your order <strong>${updated.id}</strong> was rejected.</p><p>Reason: ${req.body.reason}</p>`,
+      category: "order-rejected",
+    });
+    await notifySpecificUser({
+      title: "Your order was rejected",
+      meta: `${updated.id} was rejected`,
+      action: "View Order",
+      userId: updated.clientUserId,
+      entityId: updated.id,
+    });
+    await createAuditLog({
+      action: "order.rejected",
+      entityType: "order",
+      entityId: updated.id,
+      title: "Order rejected",
+      summary: `${updated.id} rejected by admin.`,
+      actor: req.admin,
+      metadata: { reason: req.body.reason },
+    });
 
     return ok(res, serializeAdminOrderDetail(updated), "Order rejected successfully.");
   }
@@ -556,6 +1018,49 @@ ordersRouter.patch(
       return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
     }
 
+    const client = await UserModel.findOne({ id: updated.clientUserId }).lean();
+    await ensureOrderConversation({
+      order: updated,
+      admin: { id: req.admin.id, type: "admin", role: req.admin.role, record: req.admin },
+      client: client ? { id: client.id, type: "user", role: client.role, record: client } : null,
+      notary: { id: notary.id, type: "user", role: notary.role, record: notary },
+    });
+
+    await notifyUserAudience({
+      title: "New assignment received",
+      meta: `${updated.id} assigned to ${notary.name}`,
+      action: "Review Assignment",
+      audience: "notary",
+      recipientId: notary.id,
+      recipientType: "user",
+      entityId: updated.id,
+    });
+    await notifySpecificUser({
+      title: "Your order was assigned",
+      meta: `${updated.id} has been assigned to a notary`,
+      action: "View Order",
+      userId: updated.clientUserId,
+      entityId: updated.id,
+    });
+    await queueEmail({
+      to: notary.email,
+      subject: "You have a new Notarix assignment",
+      text: `Hello ${notary.name}, order ${updated.id} has been assigned to you.`,
+      html: `<p>Hello ${notary.name},</p><p>Order <strong>${updated.id}</strong> has been assigned to you.</p>`,
+      category: "notary-assignment",
+    });
+
+    await syncPaymentFromOrder(updated, { notaryEmail: notary.email });
+    await createAuditLog({
+      action: "order.notary_assigned",
+      entityType: "order",
+      entityId: updated.id,
+      title: "Notary assigned",
+      summary: `${notary.name} assigned to ${updated.id}.`,
+      actor: req.admin,
+      metadata: { notaryId: notary.id, notaryName: notary.name },
+    });
+
     return ok(res, serializeAdminOrderDetail(updated), "Notary assigned successfully.");
   }
 );
@@ -605,6 +1110,42 @@ ordersRouter.patch(
       note: `Reassigned to ${notary.name}.`,
     });
 
+    const client = await UserModel.findOne({ id: (assigned || updated).clientUserId }).lean();
+    await ensureOrderConversation({
+      order: assigned || updated,
+      admin: { id: req.admin.id, type: "admin", role: req.admin.role, record: req.admin },
+      client: client ? { id: client.id, type: "user", role: client.role, record: client } : null,
+      notary: { id: notary.id, type: "user", role: notary.role, record: notary },
+    });
+
+    await notifyUserAudience({
+      title: "New reassigned order",
+      meta: `${updated.id} reassigned to ${notary.name}`,
+      action: "Review Assignment",
+      audience: "notary",
+      recipientId: notary.id,
+      recipientType: "user",
+      entityId: updated.id,
+    });
+    await queueEmail({
+      to: notary.email,
+      subject: "A Notarix order was reassigned to you",
+      text: `Hello ${notary.name}, order ${updated.id} has been reassigned to you.`,
+      html: `<p>Hello ${notary.name},</p><p>Order <strong>${updated.id}</strong> has been reassigned to you.</p>`,
+      category: "notary-reassignment",
+    });
+
+    await syncPaymentFromOrder(assigned || updated, { notaryEmail: notary.email });
+    await createAuditLog({
+      action: "order.notary_reassigned",
+      entityType: "order",
+      entityId: (assigned || updated).id,
+      title: "Notary reassigned",
+      summary: `${notary.name} reassigned to ${(assigned || updated).id}.`,
+      actor: req.admin,
+      metadata: { notaryId: notary.id, notaryName: notary.name },
+    });
+
     return ok(
       res,
       serializeAdminOrderDetail(assigned || updated),
@@ -629,7 +1170,65 @@ ordersRouter.patch(
       return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
     }
 
+    await notifySpecificUser({
+      title: "Order status updated",
+      meta: `${updated.id} is now ${req.body.status}`,
+      action: "View Order",
+      userId: updated.clientUserId,
+      entityId: updated.id,
+    });
+
     return ok(res, serializeAdminOrderDetail(updated), "Order status updated.");
+  }
+);
+
+ordersRouter.post(
+  "/site/notary/orders/:id/completed-documents",
+  requireAuthenticatedActor,
+  upload.array("documents", 10),
+  async (req, res) => {
+    if (req.actor.type !== "user" || req.actor.role !== "Notary") {
+      return fail(res, 403, "FORBIDDEN", "Only notary users can upload completed documents.");
+    }
+
+    const current = await findNotaryOrderById(req.params.id, req.actor.id).lean();
+    if (!current) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Assignment not found.");
+    }
+
+    const files = (req.files || []).map((file) => ({
+      id: `doc-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+      name: file.originalname,
+      file: file.filename,
+      mimeType: file.mimetype,
+      size: file.size,
+      uploadedAt: new Date(),
+    }));
+
+    const updated = await appendOrderDocuments({
+      orderId: req.params.id,
+      field: "completedDocuments",
+      files,
+    });
+
+    return ok(
+      res,
+      (updated.completedDocuments || []).map((document) => ({
+        id: document.id,
+        name: document.name,
+        url: document.file
+          ? `/api/v1/files/orders/${updated.id}/completed-documents/${document.id}?mode=view`
+          : null,
+        downloadUrl: document.file
+          ? `/api/v1/files/orders/${updated.id}/completed-documents/${document.id}?mode=download`
+          : null,
+        mimeType: document.mimeType || null,
+        size: document.size || null,
+        uploadedAt: document.uploadedAt || null,
+      })),
+      "Completed documents uploaded successfully.",
+      201
+    );
   }
 );
 
@@ -649,6 +1248,7 @@ ordersRouter.post(
       file: file.filename,
       mimeType: file.mimetype,
       size: file.size,
+      uploadedAt: new Date(),
     }));
 
     const updated = await OrderModel.findOneAndUpdate(
@@ -670,9 +1270,15 @@ ordersRouter.post(
       (updated.documents || []).map((document) => ({
         id: document.id,
         name: document.name,
-        url: document.file ? `/uploads/${document.file}` : null,
+        url: document.file
+          ? `/api/v1/files/orders/${updated.id}/documents/${document.id}?mode=view`
+          : null,
+        downloadUrl: document.file
+          ? `/api/v1/files/orders/${updated.id}/documents/${document.id}?mode=download`
+          : null,
         mimeType: document.mimeType || null,
         size: document.size || null,
+        uploadedAt: document.uploadedAt || null,
       })),
       "Order documents uploaded successfully.",
       201

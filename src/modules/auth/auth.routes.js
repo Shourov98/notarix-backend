@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   changeAdminPassword,
   firstLoginResetPassword,
+  firstLoginResetPortalPassword,
   getCurrentAdmin,
   issueForgotPasswordOtp,
   loginAdmin,
@@ -13,7 +14,10 @@ import {
   verifyForgotPasswordOtp,
 } from "./auth.service.js";
 import { ok, fail } from "../../shared/http/respond.js";
-import { requireAdminAuth } from "../../shared/http/auth-middleware.js";
+import {
+  requireAdminAuth,
+  requireAuthenticatedActor,
+} from "../../shared/http/auth-middleware.js";
 import { validate } from "../../shared/middleware/validate.js";
 import {
   changePasswordSchema,
@@ -139,6 +143,28 @@ authRouter.patch(
   async (req, res) => {
     await firstLoginResetPassword({
       adminId: req.admin.id,
+      newPassword: req.body.new_password,
+    });
+
+    return ok(
+      res,
+      { ok: true },
+      "Password updated successfully. Please login again."
+    );
+  }
+);
+
+authRouter.patch(
+  "/site/auth/reset-password",
+  requireAuthenticatedActor,
+  validate(firstLoginResetSchema),
+  async (req, res) => {
+    if (req.actor.type !== "user") {
+      return fail(res, 403, "FORBIDDEN", "Only portal users can reset password here.");
+    }
+
+    await firstLoginResetPortalPassword({
+      userId: req.actor.id,
       newPassword: req.body.new_password,
     });
 

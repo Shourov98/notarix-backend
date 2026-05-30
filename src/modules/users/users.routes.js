@@ -16,10 +16,17 @@ import {
 } from "../../shared/security/bank-info.js";
 import { hashPassword } from "../../shared/security/password.js";
 import { upload } from "../../shared/storage/upload.js";
+import { createAuditLog } from "../audit/audit.service.js";
 import { AdminModel } from "./admin.model.js";
 import { UserModel } from "./user.model.js";
 
 export const usersRouter = Router();
+
+const logProvisionedCredentials = ({ role, email, temporaryPassword }) => {
+  console.log(
+    `[account-created] role=${role} email=${email} temporaryPassword=${temporaryPassword}`
+  );
+};
 
 const REQUIRED_NOTARY_DOCUMENTS = [
   "Commission Certificate",
@@ -158,6 +165,16 @@ const serializeUser = (user) => {
 
   return {
     ...safeUser,
+    avatar: user.avatar ? `/api/v1/files/users/${user.id}/avatar?mode=view` : null,
+    requiredDocuments: (user.requiredDocuments || []).map((document) => ({
+      ...document,
+      url: document.file
+        ? `/api/v1/files/users/${user.id}/documents/${document.id}?mode=view`
+        : null,
+      downloadUrl: document.file
+        ? `/api/v1/files/users/${user.id}/documents/${document.id}?mode=download`
+        : null,
+    })),
     bankInfo: buildMaskedBankInfo(user),
   };
 };
@@ -169,6 +186,7 @@ const createDocumentRecord = (document) => ({
   file: document.file || null,
   mimeType: document.mimeType,
   size: document.size,
+  uploadedAt: document.uploadedAt || new Date(),
 });
 
 const upsertRequiredDocument = (documents, nextDocument) => {
@@ -287,6 +305,7 @@ usersRouter.post(
       passwordHash,
       passwordResetRequired: req.body?.passwordResetRequired !== false,
       role: "Client",
+      avatar: null,
       company,
       area: req.body?.address?.state || "Unknown",
       status: "Active",
@@ -318,6 +337,20 @@ usersRouter.post(
         <p>Please sign in and reset your password on first login.</p>
       `,
       category: "client-invite",
+    });
+    logProvisionedCredentials({
+      role: "Client",
+      email,
+      temporaryPassword,
+    });
+    await createAuditLog({
+      action: "user.created",
+      entityType: "user",
+      entityId: newUser.id,
+      title: "Client account created",
+      summary: `${email} was created by admin.`,
+      actor: req.admin,
+      metadata: { role: "Client", company },
     });
 
     return ok(
@@ -371,6 +404,7 @@ usersRouter.post(
       passwordHash,
       passwordResetRequired: req.body?.passwordResetRequired !== false,
       role: "Notary",
+      avatar: null,
       company: name,
       area: req.body?.address?.state || "Unknown",
       status: "Pending",
@@ -403,6 +437,20 @@ usersRouter.post(
         <p>Please sign in and reset your password on first login.</p>
       `,
       category: "notary-invite",
+    });
+    logProvisionedCredentials({
+      role: "Notary",
+      email,
+      temporaryPassword,
+    });
+    await createAuditLog({
+      action: "user.created",
+      entityType: "user",
+      entityId: newUser.id,
+      title: "Notary account created",
+      summary: `${email} was created by admin.`,
+      actor: req.admin,
+      metadata: { role: "Notary", ronEligible: newUser.ronEligible },
     });
 
     return ok(
@@ -476,6 +524,20 @@ usersRouter.post(
     };
 
     await AdminModel.create(newAdmin);
+    logProvisionedCredentials({
+      role: req.body.role,
+      email,
+      temporaryPassword,
+    });
+    await createAuditLog({
+      action: "admin.created",
+      entityType: "admin",
+      entityId: newAdmin.id,
+      title: "Admin account created",
+      summary: `${email} was created by super admin.`,
+      actor: req.admin,
+      metadata: { role: newAdmin.role, permissions: newAdmin.permissions },
+    });
 
     return ok(
       res,
@@ -706,6 +768,39 @@ usersRouter.patch("/admin/users/:id/activate", requireAdminAuth, async (req, res
 });
 
 usersRouter.post(
+  "/admin/users/:id/profile-photo",
+  requireAdminAuth,
+  upload.single("profilePhoto"),
+  async (req, res) => {
+    if (!req.file) {
+      return fail(res, 400, "FILE_REQUIRED", "A profile photo file is required.");
+    }
+
+    if (!req.file.mimetype.startsWith("image/")) {
+      return fail(res, 400, "INVALID_FILE_TYPE", "Only image files are allowed for profile photos.");
+    }
+
+    const avatarPath = `/uploads/${req.file.filename}`;
+    const updated = await UserModel.findOneAndUpdate(
+      { id: req.params.id },
+      { $set: { avatar: avatarPath } },
+      { new: true }
+    ).lean();
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+    }
+
+    return ok(
+      res,
+      { avatar: updated.avatar },
+      "Profile photo uploaded successfully.",
+      201
+    );
+  }
+);
+
+usersRouter.post(
   "/admin/users/:id/documents",
   requireAdminAuth,
   upload.array("documents", 5),
@@ -748,7 +843,17 @@ usersRouter.post(
       return fail(res, 404, "USER_NOT_FOUND", "User not found.");
     }
 
-    return ok(res, updated.requiredDocuments, "Documents uploaded successfully.", 201);
+    await createAuditLog({
+      action: "document.uploaded",
+      entityType: "user",
+      entityId: updated.id,
+      title: "User documents uploaded",
+      summary: `${files.length} verification document(s) uploaded.`,
+      actor: req.admin,
+      metadata: { fileCount: files.length, titles: documentTitles },
+    });
+
+    return ok(res, serializeUser(updated).requiredDocuments, "Documents uploaded successfully.", 201);
   }
 );
 
@@ -759,7 +864,7 @@ usersRouter.get("/admin/users/:id/documents", requireAdminAuth, async (req, res)
     return fail(res, 404, "USER_NOT_FOUND", "User not found.");
   }
 
-  return ok(res, user.requiredDocuments || []);
+  return ok(res, serializeUser(user).requiredDocuments || []);
 });
 
 usersRouter.patch(
@@ -793,6 +898,16 @@ usersRouter.patch(
       { new: true }
     ).lean();
 
-    return ok(res, updated.requiredDocuments || [], "Document status updated.");
+    await createAuditLog({
+      action: "document.verified",
+      entityType: "user",
+      entityId: updated.id,
+      title: "Document review updated",
+      summary: `${document.title} marked as ${req.body.status}.`,
+      actor: req.admin,
+      metadata: { documentId: document.id, title: document.title, status: req.body.status },
+    });
+
+    return ok(res, serializeUser(updated).requiredDocuments || [], "Document status updated.");
   }
 );

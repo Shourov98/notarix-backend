@@ -7,6 +7,7 @@ const orderDocumentSchema = new mongoose.Schema(
     file: { type: String, default: null },
     mimeType: { type: String, default: null },
     size: { type: Number, default: null },
+    uploadedAt: { type: Date, default: Date.now },
   },
   { _id: false }
 );
@@ -58,9 +59,11 @@ const orderSchema = new mongoose.Schema(
     isRon: { type: Boolean, default: false },
     specialInstructions: { type: String, default: "" },
     documents: { type: [orderDocumentSchema], default: [] },
+    completedDocuments: { type: [orderDocumentSchema], default: [] },
     adminReviewReason: { type: String, default: "" },
     notaryOfferAmount: { type: Number, default: null },
     payoutReleaseDays: { type: Number, default: null },
+    payoutDueDate: { type: Date, default: null },
     assignmentNotes: { type: String, default: "" },
     status: {
       type: String,

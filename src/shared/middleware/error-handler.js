@@ -22,14 +22,30 @@ export const notFoundHandler = (req, _res, next) => {
 
 export const errorHandler = (error, _req, res, _next) => {
   if (error instanceof AppError) {
-    return fail(res, error.status, error.code, error.message, error.details);
+    return fail(
+      res,
+      error.status,
+      error.code,
+      error.message,
+      error.details
+    );
   }
 
-  console.error(error);
+  const requestId = _req?.requestId || "unknown";
+  console.error(
+    JSON.stringify({
+      level: "error",
+      requestId,
+      method: _req?.method,
+      path: _req?.originalUrl,
+      message: error?.message || "Unexpected error",
+      stack: error?.stack || null,
+    })
+  );
   return fail(
     res,
     500,
     "INTERNAL_ERROR",
-    "Unexpected error occurred. Please contact support with requestId."
+    `Unexpected error occurred. Please contact support with requestId ${requestId}.`
   );
 };

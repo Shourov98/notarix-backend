@@ -253,6 +253,22 @@ export const firstLoginResetPassword = async ({ adminId, newPassword }) => {
   return { ok: true };
 };
 
+export const firstLoginResetPortalPassword = async ({ userId, newPassword }) => {
+  const nextHash = await hashPassword(newPassword);
+
+  await UserModel.updateOne(
+    { id: userId },
+    {
+      $set: {
+        passwordHash: nextHash,
+        passwordResetRequired: false,
+      },
+    }
+  );
+
+  return { ok: true };
+};
+
 export const getCurrentAdmin = async (adminId) => {
   const admin = await AdminModel.findOne({ id: adminId }).lean();
 

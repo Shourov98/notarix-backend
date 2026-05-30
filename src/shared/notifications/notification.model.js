@@ -7,6 +7,8 @@ const notificationSchema = new mongoose.Schema(
     meta: { type: String, default: "" },
     action: { type: String, default: "" },
     audience: { type: String, default: "admin" },
+    recipientId: { type: String, default: null, index: true },
+    recipientType: { type: String, default: null },
     entityType: { type: String, default: null },
     entityId: { type: String, default: null },
     read: { type: Boolean, default: false },

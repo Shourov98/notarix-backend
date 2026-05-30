@@ -6,8 +6,8 @@ const deriveKey = () =>
     .createHash("sha256")
     .update(
       process.env.BANK_INFO_ENCRYPTION_KEY ||
-        config.tokenSecret ||
-        "notarix-bank-info-fallback"
+        config.bankInfoEncryptionKey ||
+        config.tokenSecret
     )
     .digest();
 
