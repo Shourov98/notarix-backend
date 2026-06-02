@@ -20,7 +20,7 @@ import {
   notFoundHandler,
 } from "../shared/middleware/error-handler.js";
 import { attachRequestContext } from "../shared/middleware/request-context.js";
-import { apiRateLimit, authRateLimit } from "../shared/middleware/rate-limit.js";
+import { apiRateLimit } from "../shared/middleware/rate-limit.js";
 import { handleUploadErrors } from "../shared/storage/upload.js";
 
 const isAllowedOrigin = (origin) => {
@@ -55,7 +55,7 @@ export const createApp = () => {
     ok(res, { service: "notarix-backend", status: "ok" })
   );
 
-  app.use(config.apiPrefix, authRateLimit, authRouter);
+  app.use(config.apiPrefix, authRouter);
   app.use(config.apiPrefix, requestsRouter);
   app.use(config.apiPrefix, usersRouter);
   app.use(config.apiPrefix, ordersRouter);

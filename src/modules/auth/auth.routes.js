@@ -18,6 +18,7 @@ import {
   requireAdminAuth,
   requireAuthenticatedActor,
 } from "../../shared/http/auth-middleware.js";
+import { authRateLimit } from "../../shared/middleware/rate-limit.js";
 import { validate } from "../../shared/middleware/validate.js";
 import {
   changePasswordSchema,
@@ -33,7 +34,7 @@ import {
 
 export const authRouter = Router();
 
-authRouter.post("/admin/auth/login", validate(loginSchema), async (req, res) => {
+authRouter.post("/admin/auth/login", authRateLimit, validate(loginSchema), async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
   const authPayload = await loginAdmin({ email, password });
@@ -45,7 +46,7 @@ authRouter.post("/admin/auth/login", validate(loginSchema), async (req, res) => 
   return ok(res, authPayload, "Login successful");
 });
 
-authRouter.post("/site/auth/login", validate(portalLoginSchema), async (req, res) => {
+authRouter.post("/site/auth/login", authRateLimit, validate(portalLoginSchema), async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
   const role = String(req.body?.role || "").trim().toLowerCase();
@@ -58,7 +59,7 @@ authRouter.post("/site/auth/login", validate(portalLoginSchema), async (req, res
   return ok(res, authPayload, "Login successful");
 });
 
-authRouter.post("/admin/auth/logout", requireAdminAuth, validate(logoutSchema), async (req, res) => {
+authRouter.post("/admin/auth/logout", authRateLimit, requireAdminAuth, validate(logoutSchema), async (req, res) => {
   await logoutAdmin({
     adminId: req.admin.id,
     refreshToken: req.body?.refreshToken,
@@ -67,7 +68,7 @@ authRouter.post("/admin/auth/logout", requireAdminAuth, validate(logoutSchema), 
   return ok(res, { ok: true }, "Logout successful.");
 });
 
-authRouter.post("/admin/auth/forgot-password", validate(emailSchema), async (req, res) => {
+authRouter.post("/admin/auth/forgot-password", authRateLimit, validate(emailSchema), async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const result = await issueForgotPasswordOtp(email);
 
@@ -78,13 +79,13 @@ authRouter.post("/admin/auth/forgot-password", validate(emailSchema), async (req
   return ok(res, result, "Verification code sent. Use 1234 in local development.");
 });
 
-authRouter.post("/admin/auth/resend-forgot-otp", validate(emailSchema), async (req, res) => {
+authRouter.post("/admin/auth/resend-forgot-otp", authRateLimit, validate(emailSchema), async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const result = await resendForgotPasswordOtp(email);
   return ok(res, result, "Verification code resent. Use 1234 in local development.");
 });
 
-authRouter.post("/admin/auth/verify-forgot-otp", validate(verifyOtpSchema), async (req, res) => {
+authRouter.post("/admin/auth/verify-forgot-otp", authRateLimit, validate(verifyOtpSchema), async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const otp = String(req.body?.otp || "").trim();
   const result = await verifyForgotPasswordOtp({ email, otp });
@@ -96,7 +97,7 @@ authRouter.post("/admin/auth/verify-forgot-otp", validate(verifyOtpSchema), asyn
   return ok(res, result, "Verification successful.");
 });
 
-authRouter.post("/admin/auth/reset-password", validate(resetPasswordSchema), async (req, res) => {
+authRouter.post("/admin/auth/reset-password", authRateLimit, validate(resetPasswordSchema), async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const newPassword = String(req.body?.new_password || "");
   const result = await resetAdminPassword({ email, newPassword });
@@ -108,7 +109,7 @@ authRouter.post("/admin/auth/reset-password", validate(resetPasswordSchema), asy
   return ok(res, result, "Password has been reset successfully.");
 });
 
-authRouter.post("/admin/auth/refresh", validate(refreshSchema), async (req, res) => {
+authRouter.post("/admin/auth/refresh", authRateLimit, validate(refreshSchema), async (req, res) => {
   const refreshToken = String(req.body?.refreshToken || "");
   const result = await refreshAdminSession(refreshToken);
 
@@ -119,7 +120,7 @@ authRouter.post("/admin/auth/refresh", validate(refreshSchema), async (req, res)
   return ok(res, result, "Session refreshed.");
 });
 
-authRouter.patch("/admin/change-password", requireAdminAuth, validate(changePasswordSchema), async (req, res) => {
+authRouter.patch("/admin/change-password", authRateLimit, requireAdminAuth, validate(changePasswordSchema), async (req, res) => {
   const currentPassword = String(req.body?.current_password || "");
   const newPassword = String(req.body?.new_password || "");
 
@@ -138,6 +139,7 @@ authRouter.patch("/admin/change-password", requireAdminAuth, validate(changePass
 
 authRouter.patch(
   "/auth/reset-password",
+  authRateLimit,
   requireAdminAuth,
   validate(firstLoginResetSchema),
   async (req, res) => {
@@ -156,6 +158,7 @@ authRouter.patch(
 
 authRouter.patch(
   "/site/auth/reset-password",
+  authRateLimit,
   requireAuthenticatedActor,
   validate(firstLoginResetSchema),
   async (req, res) => {
