@@ -1,3 +1,21 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+
+const loadEnvFile = () => {
+  if (typeof process.loadEnvFile !== "function") {
+    return;
+  }
+
+  const envPath = resolve(process.cwd(), ".env");
+  if (!existsSync(envPath)) {
+    return;
+  }
+
+  process.loadEnvFile(envPath);
+};
+
+loadEnvFile();
+
 const resolveNumber = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;

@@ -7,6 +7,10 @@ import {
   requireAdminRole,
 } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
+import {
+  buildPaginationMeta,
+  parsePaginationQuery,
+} from "../../shared/http/pagination.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { queueEmail } from "../../shared/notifications/email.service.js";
 import {
@@ -155,6 +159,42 @@ const bankInfoSchema = z.object({
   params: z.object({}).passthrough(),
 });
 
+const adminUsersListSchema = z.object({
+  body: z.object({}).passthrough(),
+  query: z.object({
+    search: z.string().optional(),
+    role: z.string().optional(),
+    status: z.string().optional(),
+    page: z.string().optional(),
+    pageSize: z.string().optional(),
+  }).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+const adminAdminsListSchema = z.object({
+  body: z.object({}).passthrough(),
+  query: z.object({
+    search: z.string().optional(),
+    role: z.string().optional(),
+    status: z.string().optional(),
+    page: z.string().optional(),
+    pageSize: z.string().optional(),
+  }).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+const adminDocumentsListSchema = z.object({
+  body: z.object({}).passthrough(),
+  query: z.object({
+    search: z.string().optional(),
+    role: z.string().optional(),
+    status: z.string().optional(),
+    page: z.string().optional(),
+    pageSize: z.string().optional(),
+  }).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
 const serializeUser = (user) => {
   const {
     passwordHash,
@@ -188,6 +228,37 @@ const createDocumentRecord = (document) => ({
   size: document.size,
   uploadedAt: document.uploadedAt || new Date(),
 });
+
+const serializeAdminDocumentRow = (user, document) => {
+  const safeUser = serializeUser(user);
+
+  return {
+    id: document.id,
+    name: document.title,
+    title: document.title,
+    orderId: "",
+    uploadedBy: safeUser.name,
+    uploadedByLabel: safeUser.name,
+    uploadedById: safeUser.id,
+    uploadedByEmail: safeUser.email,
+    userId: safeUser.id,
+    role: safeUser.role,
+    type: safeUser.role === "Notary" ? "Notary" : "Client",
+    date: document.uploadedAt
+      ? new Date(document.uploadedAt).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "Not set",
+    uploadedAt: document.uploadedAt || null,
+    status: document.status || "Missing",
+    selected: false,
+    file: document.file || null,
+    url: document.url || null,
+    downloadUrl: document.downloadUrl || null,
+  };
+};
 
 const upsertRequiredDocument = (documents, nextDocument) => {
   const existingIndex = documents.findIndex(
@@ -241,7 +312,7 @@ const listMissingNotaryDocuments = (documents = []) =>
       )
   );
 
-usersRouter.get("/admin/users", requireAdminAuth, async (req, res) => {
+usersRouter.get("/admin/users", requireAdminAuth, validate(adminUsersListSchema), async (req, res) => {
   const search = String(req.query.search || "").trim().toLowerCase();
   const role = String(req.query.role || "").trim().toLowerCase();
   const status = String(req.query.status || "").trim().toLowerCase();
@@ -262,9 +333,16 @@ usersRouter.get("/admin/users", requireAdminAuth, async (req, res) => {
     ];
   }
 
-  const filtered = await UserModel.find(query).sort({ createdAt: -1 }).lean();
+  const { page, pageSize, skip } = parsePaginationQuery(req.query);
+  const [totalItems, filtered] = await Promise.all([
+    UserModel.countDocuments(query),
+    UserModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize).lean(),
+  ]);
 
-  return ok(res, filtered);
+  return ok(res, {
+    items: filtered,
+    pagination: buildPaginationMeta({ page, pageSize, totalItems }),
+  });
 });
 
 usersRouter.get("/admin/users/:id", requireAdminAuth, async (req, res) => {
@@ -559,10 +637,32 @@ usersRouter.get(
   "/admin/admins",
   requireAdminAuth,
   requireAdminRole("super_admin"),
-  async (_req, res) => {
-    const adminRecords = await AdminModel.find()
-      .sort({ createdAt: -1 })
-      .lean();
+  validate(adminAdminsListSchema),
+  async (req, res) => {
+    const search = String(req.query.search || "").trim();
+    const role = String(req.query.role || "").trim();
+    const status = String(req.query.status || "").trim();
+
+    const query = {};
+    if (role) {
+      query.role = new RegExp(`^${role}$`, "i");
+    }
+    if (status) {
+      query.status = new RegExp(`^${status}$`, "i");
+    }
+    if (search) {
+      query.$or = [
+        { id: { $regex: search, $options: "i" } },
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const { page, pageSize, skip } = parsePaginationQuery(req.query);
+    const [totalItems, adminRecords] = await Promise.all([
+      AdminModel.countDocuments(query),
+      AdminModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize).lean(),
+    ]);
     const admins = adminRecords.map((admin) => ({
       id: admin.id,
       name: admin.name,
@@ -575,7 +675,63 @@ usersRouter.get(
       createdAt: admin.createdAt || null,
     }));
 
-    return ok(res, admins);
+    return ok(res, {
+      items: admins,
+      pagination: buildPaginationMeta({ page, pageSize, totalItems }),
+    });
+  }
+);
+
+usersRouter.get(
+  "/admin/documents",
+  requireAdminAuth,
+  validate(adminDocumentsListSchema),
+  async (req, res) => {
+    const search = String(req.query.search || "").trim().toLowerCase();
+    const role = String(req.query.role || "").trim().toLowerCase();
+    const status = String(req.query.status || "").trim().toLowerCase();
+
+    const userQuery = {};
+    if (role && role !== "internal") {
+      userQuery.role = new RegExp(`^${role}$`, "i");
+    }
+
+    const users = await UserModel.find(userQuery).sort({ createdAt: -1 }).lean();
+    const rows = users
+      .flatMap((user) =>
+        (serializeUser(user).requiredDocuments || []).map((document) =>
+          serializeAdminDocumentRow(user, document)
+        )
+      )
+      .filter((row) => {
+        if (status && row.status.toLowerCase() !== status) {
+          return false;
+        }
+
+        if (!search) {
+          return true;
+        }
+
+        return [
+          row.id,
+          row.name,
+          row.uploadedBy,
+          row.uploadedByEmail,
+          row.type,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(search));
+      })
+      .sort((left, right) => new Date(right.uploadedAt || 0) - new Date(left.uploadedAt || 0));
+
+    const { page, pageSize, skip } = parsePaginationQuery(req.query);
+    const totalItems = rows.length;
+    const items = rows.slice(skip, skip + pageSize);
+
+    return ok(res, {
+      items,
+      pagination: buildPaginationMeta({ page, pageSize, totalItems }),
+    });
   }
 );
 

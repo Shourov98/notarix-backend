@@ -5,6 +5,10 @@ import {
   requireAuthenticatedActor,
 } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
+import {
+  buildPaginationMeta,
+  parsePaginationQuery,
+} from "../../shared/http/pagination.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { upload } from "../../shared/storage/upload.js";
 import { OrderModel } from "../orders/order.model.js";
@@ -24,6 +28,8 @@ const listPaymentsSchema = z.object({
     search: z.string().optional(),
     status: z.string().optional(),
     type: z.enum(["Inbound", "Outbound"]).optional(),
+    page: z.string().optional(),
+    pageSize: z.string().optional(),
   }).passthrough(),
   params: z.object({}).passthrough(),
 });
@@ -268,10 +274,14 @@ paymentsRouter.get(
 
       return true;
     });
+    const { page, pageSize, skip } = parsePaginationQuery(req.query);
+    const totalItems = rows.length;
+    const items = rows.slice(skip, skip + pageSize);
 
     return ok(res, {
       summary: buildPaymentSummary(payments),
-      payments: rows,
+      items,
+      pagination: buildPaginationMeta({ page, pageSize, totalItems }),
     });
   }
 );

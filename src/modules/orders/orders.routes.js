@@ -6,6 +6,10 @@ import {
   requireAuthenticatedActor,
 } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
+import {
+  buildPaginationMeta,
+  parsePaginationQuery,
+} from "../../shared/http/pagination.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { upload } from "../../shared/storage/upload.js";
 import { OrderModel } from "./order.model.js";
@@ -69,6 +73,8 @@ const listOrdersSchema = z.object({
     search: z.string().optional(),
     status: z.string().optional(),
     serviceType: z.string().optional(),
+    page: z.string().optional(),
+    pageSize: z.string().optional(),
   }).passthrough(),
   params: z.object({}).passthrough(),
 });
@@ -866,10 +872,17 @@ ordersRouter.get(
   requireAdminAuth,
   validate(listOrdersSchema),
   async (req, res) => {
-    const orders = await OrderModel.find(buildOrderSearchQuery(req.query))
-      .sort({ createdAt: -1 })
-      .lean();
-    return ok(res, orders.map(serializeAdminOrder));
+    const query = buildOrderSearchQuery(req.query);
+    const { page, pageSize, skip } = parsePaginationQuery(req.query);
+    const [totalItems, orders] = await Promise.all([
+      OrderModel.countDocuments(query),
+      OrderModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize).lean(),
+    ]);
+
+    return ok(res, {
+      items: orders.map(serializeAdminOrder),
+      pagination: buildPaginationMeta({ page, pageSize, totalItems }),
+    });
   }
 );
 

@@ -2,6 +2,10 @@ import { Router } from "express";
 import mongoose from "mongoose";
 import { requireAdminAuth } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
+import {
+  buildPaginationMeta,
+  parsePaginationQuery,
+} from "../../shared/http/pagination.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { queueEmail } from "../../shared/notifications/email.service.js";
 import { createNotification } from "../../shared/notifications/notification.service.js";
@@ -105,13 +109,42 @@ requestsRouter.get("/admin/requests", requireAdminAuth, async (req, res) => {
   }
 
   const status = String(req.query.status || "").trim();
-  const query = status
-    ? { status: new RegExp(`^${status}$`, "i") }
-    : {};
-  const results = await UserRequestModel.find(query)
+  const search = String(req.query.search || "").trim();
+  const contactType = String(req.query.contactType || "").trim();
+  const query = {};
+
+  if (status) {
+    query.status = new RegExp(`^${status}$`, "i");
+  }
+
+  if (contactType) {
+    query.contactType = new RegExp(`^${contactType}$`, "i");
+  }
+
+  if (search) {
+    query.$or = [
+      { id: { $regex: search, $options: "i" } },
+      { name: { $regex: search, $options: "i" } },
+      { email: { $regex: search, $options: "i" } },
+      { companyName: { $regex: search, $options: "i" } },
+      { state: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  const { page, pageSize, skip } = parsePaginationQuery(req.query);
+  const [totalItems, results] = await Promise.all([
+    UserRequestModel.countDocuments(query),
+    UserRequestModel.find(query)
     .sort({ createdAt: -1 })
-    .lean();
-  return ok(res, results);
+      .skip(skip)
+      .limit(pageSize)
+      .lean(),
+  ]);
+
+  return ok(res, {
+    items: results,
+    pagination: buildPaginationMeta({ page, pageSize, totalItems }),
+  });
 });
 
 requestsRouter.get("/admin/requests/:id", requireAdminAuth, async (req, res) => {
