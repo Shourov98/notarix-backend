@@ -61,6 +61,40 @@ export const emitConversationMessage = (conversationId, payload) => {
   socketServer.to(`conversation:${conversationId}`).emit("new_message", payload);
 };
 
+const emitToOrderActors = (order, eventName, payload) => {
+  if (!socketServer || !order || !eventName) {
+    return;
+  }
+
+  socketServer.to("audience:admin").emit(eventName, payload);
+
+  if (order.clientUserId) {
+    socketServer.to(`actor:user:${order.clientUserId}`).emit(eventName, payload);
+  }
+
+  if (order.notaryId) {
+    socketServer.to(`actor:user:${order.notaryId}`).emit(eventName, payload);
+  }
+};
+
+export const emitOrderStatusUpdated = (order, payload = {}) => {
+  emitToOrderActors(order, "order_status_updated", {
+    orderId: order.id,
+    status: order.status,
+    ...payload,
+  });
+};
+
+export const emitAssignmentUpdated = (order, payload = {}) => {
+  emitToOrderActors(order, "assignment_updated", {
+    orderId: order.id,
+    status: order.status,
+    notaryId: order.notaryId || null,
+    notaryName: order.notary || null,
+    ...payload,
+  });
+};
+
 export const emitNotificationEvent = (notification) => {
   if (!socketServer || !notification) {
     return;

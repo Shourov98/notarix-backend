@@ -15,21 +15,19 @@ import { createNotification } from "../../shared/notifications/notification.serv
 import { ensureOrderConversation } from "../messages/messages.service.js";
 import { syncPaymentFromOrder } from "../payments/payment.service.js";
 import { createAuditLog } from "../audit/audit.service.js";
+import {
+  emitAssignmentUpdated,
+  emitOrderStatusUpdated,
+} from "../../shared/realtime/socket.js";
+import {
+  ORDER_STATUSES,
+  canTransitionOrderStatus,
+  getOrderTransitionError,
+  requiresCompletedDocumentsForCompletion,
+  serializeStatus,
+} from "./order-workflow.service.js";
 
 export const ordersRouter = Router();
-
-const ORDER_STATUSES = [
-  "Pending Admin Review",
-  "Accepted By Admin",
-  "Rejected By Admin",
-  "Notary Assigned",
-  "Accepted By Notary",
-  "Rejected By Notary",
-  "Needs Reassignment",
-  "In Progress",
-  "Completed",
-  "Cancelled",
-];
 
 const orderCreateSchema = z.object({
   body: z.object({
@@ -126,21 +124,6 @@ const notaryRejectSchema = z.object({
 });
 
 const normalizeId = (value) => String(value || "").replace(/^#/, "");
-
-const serializeStatus = (status) => {
-  switch (status) {
-    case "Pending Admin Review":
-    case "Accepted By Admin":
-    case "Rejected By Admin":
-    case "Needs Reassignment":
-      return "Pending";
-    case "Notary Assigned":
-    case "Accepted By Notary":
-      return "Assigned";
-    default:
-      return status;
-  }
-};
 
 const buildOrderRoute = (order) => `/orders/${order.id}`;
 const buildClientOrderRoute = (order) => `/dashboard-client/orders/${order.id}`;
@@ -340,6 +323,16 @@ const findOrderById = (id) => OrderModel.findOne({ id: normalizeId(id) });
 const findNotaryOrderById = (id, notaryId) =>
   OrderModel.findOne({ id: normalizeId(id), notaryId });
 
+const assertTransitionOrFail = (res, currentStatus, nextStatus) => {
+  const errorMessage = getOrderTransitionError(currentStatus, nextStatus);
+  if (!errorMessage) {
+    return false;
+  }
+
+  fail(res, 400, "INVALID_STATUS", errorMessage);
+  return true;
+};
+
 const updateOrderStatus = async ({ id, status, actor, note = "", extraSet = {} }) =>
   OrderModel.findOneAndUpdate(
     { id: normalizeId(id) },
@@ -472,6 +465,11 @@ ordersRouter.post(
     });
 
     await syncPaymentFromOrder(order.toObject());
+    emitOrderStatusUpdated(order.toObject(), {
+      previousStatus: null,
+      changedBy: req.actor.id,
+      event: "created",
+    });
     await createAuditLog({
       action: "order.created",
       entityType: "order",
@@ -652,6 +650,16 @@ ordersRouter.patch(
       note: req.body.note || "Assignment accepted by notary.",
     });
 
+    await syncPaymentFromOrder(updated);
+    emitOrderStatusUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.actor.id,
+    });
+    emitAssignmentUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.actor.id,
+      event: "accepted",
+    });
     await notifyAdmins({
       title: "Notary accepted assignment",
       meta: `${updated.id} · ${req.actor.record.name}`,
@@ -684,6 +692,9 @@ ordersRouter.patch(
     if (!current) {
       return fail(res, 404, "ORDER_NOT_FOUND", "Assignment not found.");
     }
+    if (assertTransitionOrFail(res, current.status, "Rejected By Notary")) {
+      return;
+    }
 
     const rejected = await updateOrderStatus({
       id: req.params.id,
@@ -703,6 +714,16 @@ ordersRouter.patch(
       },
     });
 
+    await syncPaymentFromOrder(reassignmentReady);
+    emitOrderStatusUpdated(reassignmentReady, {
+      previousStatus: current.status,
+      changedBy: req.actor.id,
+    });
+    emitAssignmentUpdated(reassignmentReady, {
+      previousStatus: current.status,
+      changedBy: req.actor.id,
+      event: "rejected",
+    });
     await notifyAdmins({
       title: "Notary rejected assignment",
       meta: `${rejected.id} · ${req.actor.record.name}`,
@@ -736,8 +757,8 @@ ordersRouter.patch(
     if (!current) {
       return fail(res, 404, "ORDER_NOT_FOUND", "Assignment not found.");
     }
-    if (!["Accepted By Notary", "Notary Assigned"].includes(current.status)) {
-      return fail(res, 400, "INVALID_STATUS", "This assignment cannot be started yet.");
+    if (assertTransitionOrFail(res, current.status, "In Progress")) {
+      return;
     }
 
     const updated = await updateOrderStatus({
@@ -747,6 +768,16 @@ ordersRouter.patch(
       note: req.body.note || "Signing started by notary.",
     });
 
+    await syncPaymentFromOrder(updated);
+    emitOrderStatusUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.actor.id,
+    });
+    emitAssignmentUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.actor.id,
+      event: "started",
+    });
     return ok(res, serializeAdminOrderDetail(updated), "Order started successfully.");
   }
 );
@@ -764,8 +795,16 @@ ordersRouter.patch(
     if (!current) {
       return fail(res, 404, "ORDER_NOT_FOUND", "Assignment not found.");
     }
-    if (current.status !== "In Progress") {
-      return fail(res, 400, "INVALID_STATUS", "Only in-progress assignments can be completed.");
+    if (assertTransitionOrFail(res, current.status, "Completed")) {
+      return;
+    }
+    if (requiresCompletedDocumentsForCompletion(current)) {
+      return fail(
+        res,
+        400,
+        "COMPLETED_DOCUMENTS_REQUIRED",
+        "Upload at least one completed document before marking the order complete."
+      );
     }
 
     const updated = await updateOrderStatus({
@@ -778,6 +817,15 @@ ordersRouter.patch(
       },
     });
 
+    emitOrderStatusUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.actor.id,
+    });
+    emitAssignmentUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.actor.id,
+      event: "completed",
+    });
     await notifyAdmins({
       title: "Order completed by notary",
       meta: `${updated.id} is ready for review`,
@@ -843,6 +891,14 @@ ordersRouter.patch(
   requireAdminAuth,
   validate(orderIdParamsSchema),
   async (req, res) => {
+    const current = await findOrderById(req.params.id).lean();
+    if (!current) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
+    }
+    if (assertTransitionOrFail(res, current.status, "Accepted By Admin")) {
+      return;
+    }
+
     const updated = await updateOrderStatus({
       id: req.params.id,
       status: "Accepted By Admin",
@@ -851,10 +907,11 @@ ordersRouter.patch(
       extraSet: { adminReviewReason: "" },
     });
 
-    if (!updated) {
-      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
-    }
-
+    await syncPaymentFromOrder(updated);
+    emitOrderStatusUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.admin.id,
+    });
     await queueEmail({
       to: updated.clientEmail,
       subject: "Your Notarix order was accepted",
@@ -887,6 +944,14 @@ ordersRouter.patch(
   requireAdminAuth,
   validate(rejectOrderSchema),
   async (req, res) => {
+    const current = await findOrderById(req.params.id).lean();
+    if (!current) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
+    }
+    if (assertTransitionOrFail(res, current.status, "Rejected By Admin")) {
+      return;
+    }
+
     const updated = await updateOrderStatus({
       id: req.params.id,
       status: "Rejected By Admin",
@@ -899,10 +964,16 @@ ordersRouter.patch(
       },
     });
 
-    if (!updated) {
-      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
-    }
-
+    await syncPaymentFromOrder(updated);
+    emitOrderStatusUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.admin.id,
+    });
+    emitAssignmentUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.admin.id,
+      event: "rejected",
+    });
     await queueEmail({
       to: updated.clientEmail,
       subject: "Your Notarix order was rejected",
@@ -984,6 +1055,14 @@ ordersRouter.patch(
   requireAdminAuth,
   validate(assignNotarySchema),
   async (req, res) => {
+    const current = await findOrderById(req.params.id).lean();
+    if (!current) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
+    }
+    if (assertTransitionOrFail(res, current.status, "Notary Assigned")) {
+      return;
+    }
+
     const notary = await UserModel.findOne({
       id: req.body.notaryId,
       role: "Notary",
@@ -991,6 +1070,9 @@ ordersRouter.patch(
 
     if (!notary) {
       return fail(res, 404, "NOTARY_NOT_FOUND", "Notary not found.");
+    }
+    if (notary.status === "Suspended") {
+      return fail(res, 400, "NOTARY_UNAVAILABLE", "Suspended notaries cannot be assigned.");
     }
 
     const updated = await updateOrderStatus({
@@ -1013,10 +1095,6 @@ ordersRouter.patch(
         adminReviewReason: "",
       },
     });
-
-    if (!updated) {
-      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
-    }
 
     const client = await UserModel.findOne({ id: updated.clientUserId }).lean();
     await ensureOrderConversation({
@@ -1051,6 +1129,15 @@ ordersRouter.patch(
     });
 
     await syncPaymentFromOrder(updated, { notaryEmail: notary.email });
+    emitOrderStatusUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.admin.id,
+    });
+    emitAssignmentUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.admin.id,
+      event: "assigned",
+    });
     await createAuditLog({
       action: "order.notary_assigned",
       entityType: "order",
@@ -1070,6 +1157,19 @@ ordersRouter.patch(
   requireAdminAuth,
   validate(assignNotarySchema),
   async (req, res) => {
+    const current = await findOrderById(req.params.id).lean();
+    if (!current) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
+    }
+    if (current.status !== "Needs Reassignment") {
+      return fail(
+        res,
+        400,
+        "INVALID_STATUS",
+        'Only orders in status "Needs Reassignment" can be reassigned.'
+      );
+    }
+
     const notary = await UserModel.findOne({
       id: req.body.notaryId,
       role: "Notary",
@@ -1077,6 +1177,9 @@ ordersRouter.patch(
 
     if (!notary) {
       return fail(res, 404, "NOTARY_NOT_FOUND", "Notary not found.");
+    }
+    if (notary.status === "Suspended") {
+      return fail(res, 400, "NOTARY_UNAVAILABLE", "Suspended notaries cannot be assigned.");
     }
 
     const updated = await updateOrderStatus({
@@ -1098,10 +1201,6 @@ ordersRouter.patch(
         assignmentNotes: req.body.assignmentNotes || "",
       },
     });
-
-    if (!updated) {
-      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
-    }
 
     const assigned = await updateOrderStatus({
       id: req.params.id,
@@ -1136,6 +1235,15 @@ ordersRouter.patch(
     });
 
     await syncPaymentFromOrder(assigned || updated, { notaryEmail: notary.email });
+    emitOrderStatusUpdated(assigned || updated, {
+      previousStatus: current.status,
+      changedBy: req.admin.id,
+    });
+    emitAssignmentUpdated(assigned || updated, {
+      previousStatus: current.status,
+      changedBy: req.admin.id,
+      event: "reassigned",
+    });
     await createAuditLog({
       action: "order.notary_reassigned",
       entityType: "order",
@@ -1159,23 +1267,94 @@ ordersRouter.patch(
   requireAdminAuth,
   validate(orderStatusSchema),
   async (req, res) => {
+    const current = await findOrderById(req.params.id).lean();
+    if (!current) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
+    }
+    if (!canTransitionOrderStatus(current.status, req.body.status)) {
+      return fail(
+        res,
+        400,
+        "INVALID_STATUS",
+        getOrderTransitionError(current.status, req.body.status)
+      );
+    }
+    if (
+      ["Notary Assigned", "Accepted By Notary", "In Progress", "Completed"].includes(
+        req.body.status
+      ) &&
+      !current.notaryId
+    ) {
+      return fail(
+        res,
+        400,
+        "NOTARY_REQUIRED",
+        "This status requires an assigned notary before it can be applied."
+      );
+    }
+    if (
+      req.body.status === "Completed" &&
+      requiresCompletedDocumentsForCompletion(current)
+    ) {
+      return fail(
+        res,
+        400,
+        "COMPLETED_DOCUMENTS_REQUIRED",
+        "Upload at least one completed document before marking the order complete."
+      );
+    }
+
+    const extraSet = {};
+    if (req.body.status === "Cancelled") {
+      extraSet.notaryId = null;
+      extraSet.notary = "Unassigned";
+    }
+    if (req.body.status === "Completed") {
+      extraSet.payoutDueDate = buildPayoutDueDate(current.payoutReleaseDays || 0);
+    }
+    if (req.body.status === "Needs Reassignment") {
+      extraSet.notaryId = null;
+      extraSet.notary = "Unassigned";
+    }
+
     const updated = await updateOrderStatus({
       id: req.params.id,
       status: req.body.status,
       actor: req.admin,
       note: req.body.note || `Order marked as ${req.body.status}.`,
+      extraSet,
     });
 
-    if (!updated) {
-      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
+    await syncPaymentFromOrder(updated);
+    emitOrderStatusUpdated(updated, {
+      previousStatus: current.status,
+      changedBy: req.admin.id,
+    });
+    if (updated.notaryId || current.notaryId) {
+      emitAssignmentUpdated(updated, {
+        previousStatus: current.status,
+        changedBy: req.admin.id,
+        event: "status-updated",
+      });
     }
-
     await notifySpecificUser({
       title: "Order status updated",
       meta: `${updated.id} is now ${req.body.status}`,
       action: "View Order",
       userId: updated.clientUserId,
       entityId: updated.id,
+    });
+    await createAuditLog({
+      action: "order.status_updated",
+      entityType: "order",
+      entityId: updated.id,
+      title: "Order status updated",
+      summary: `${updated.id} moved from ${current.status} to ${updated.status}.`,
+      actor: req.admin,
+      metadata: {
+        fromStatus: current.status,
+        toStatus: updated.status,
+      },
     });
 
     return ok(res, serializeAdminOrderDetail(updated), "Order status updated.");
@@ -1194,6 +1373,14 @@ ordersRouter.post(
     const current = await findNotaryOrderById(req.params.id, req.actor.id).lean();
     if (!current) {
       return fail(res, 404, "ORDER_NOT_FOUND", "Assignment not found.");
+    }
+    if (!["In Progress", "Completed"].includes(current.status)) {
+      return fail(
+        res,
+        400,
+        "INVALID_STATUS",
+        "Completed documents can only be uploaded for in-progress or completed orders."
+      );
     }
 
     const files = (req.files || []).map((file) => ({

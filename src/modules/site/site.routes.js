@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
-import { readStore } from "../../store.js";
-import { requireAuthenticatedActor } from "../../shared/http/auth-middleware.js";
+import {
+  requireAdminAuth,
+  requireAuthenticatedActor,
+} from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
 import {
@@ -10,6 +12,8 @@ import {
   encryptBankInfo,
 } from "../../shared/security/bank-info.js";
 import { UserModel } from "../users/user.model.js";
+import { OrderModel } from "../orders/order.model.js";
+import { PaymentModel } from "../payments/payment.model.js";
 
 export const siteRouter = Router();
 
@@ -39,21 +43,118 @@ const ensurePortalRole = (req, res, roleLabel) => {
   return true;
 };
 
-siteRouter.get("/site/client/overview", async (_req, res) => {
-  const store = await readStore();
-  const documents = store.siteClient.documents
-    .map((docId) => store.documents.find((doc) => doc.id === docId))
-    .filter(Boolean);
+const toCurrency = (value) => `$${Number(value || 0).toFixed(2)}`;
+
+const serializeOrderPreview = (order) => ({
+  id: order.id,
+  title: order.clientCompany || order.clientName,
+  borrower: order.signerName,
+  status: order.status,
+  type: order.isRon ? "RON" : "In-Person",
+  location: order.isRon
+    ? "Remote Online"
+    : [order.propertyAddress?.city, order.propertyAddress?.state, order.propertyAddress?.zip]
+        .filter(Boolean)
+        .join(", "),
+  fee: toCurrency(order.notaryOfferAmount ?? order.feeAmount ?? 0),
+  date: `${order.signingDate} ${order.signingTime}`.trim(),
+});
+
+siteRouter.get("/site/client/overview", requireAuthenticatedActor, async (req, res) => {
+  if (!ensurePortalRole(req, res, "Client")) {
+    return;
+  }
+
+  const [user, orders, payments] = await Promise.all([
+    UserModel.findOne({ id: req.actor.id }).lean(),
+    OrderModel.find({ clientUserId: req.actor.id }).sort({ createdAt: -1 }).lean(),
+    PaymentModel.find({ clientUserId: req.actor.id }).sort({ createdAt: -1 }).lean(),
+  ]);
+
+  if (!user) {
+    return fail(res, 404, "USER_NOT_FOUND", "Client not found.");
+  }
+
+  const pendingOrders = orders.filter((order) =>
+    ["Pending Admin Review", "Accepted By Admin", "Needs Reassignment"].includes(order.status)
+  ).length;
+
+  const completedOrders = orders.filter((order) => order.status === "Completed").length;
+  const outstandingPayments = payments.reduce(
+    (sum, payment) =>
+      sum +
+      (payment.clientPayment?.status === "Received"
+        ? 0
+        : Number(payment.clientPayment?.amount || 0)),
+    0
+  );
 
   return ok(res, {
-    ...store.siteClient,
-    documents,
+    profile: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      company: user.organization?.companyName || user.company || "",
+      status: user.status,
+      verification: user.verification,
+    },
+    stats: {
+      totalOrders: orders.length,
+      pendingOrders,
+      completedOrders,
+      outstandingPayments: toCurrency(outstandingPayments),
+    },
+    documents: user.requiredDocuments || [],
+    recentOrders: orders.slice(0, 5).map(serializeOrderPreview),
   });
 });
 
-siteRouter.get("/site/notary/overview", async (_req, res) => {
-  const store = await readStore();
-  return ok(res, store.siteNotary);
+siteRouter.get("/site/notary/overview", requireAuthenticatedActor, async (req, res) => {
+  if (!ensurePortalRole(req, res, "Notary")) {
+    return;
+  }
+
+  const [user, orders, payments] = await Promise.all([
+    UserModel.findOne({ id: req.actor.id }).lean(),
+    OrderModel.find({ notaryId: req.actor.id }).sort({ createdAt: -1 }).lean(),
+    PaymentModel.find({ notaryId: req.actor.id }).sort({ createdAt: -1 }).lean(),
+  ]);
+
+  if (!user) {
+    return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
+  }
+
+  const completedOrders = orders.filter((order) => order.status === "Completed");
+  const openAssignments = orders.filter((order) =>
+    ["Notary Assigned", "Accepted By Notary", "In Progress"].includes(order.status)
+  );
+  const pendingPayouts = payments.reduce(
+    (sum, payment) =>
+      sum +
+      (payment.notaryPayout?.status === "Paid"
+        ? 0
+        : Number(payment.notaryPayout?.amount || 0)),
+    0
+  );
+
+  return ok(res, {
+    profile: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      status: user.status,
+      verification: user.verification,
+      ronEligible: Boolean(user.ronEligible),
+    },
+    stats: {
+      totalAssignments: orders.length,
+      openAssignments: openAssignments.length,
+      completedAssignments: completedOrders.length,
+      pendingPayouts: toCurrency(pendingPayouts),
+    },
+    documents: user.requiredDocuments || [],
+    recentAssignments: orders.slice(0, 5).map(serializeOrderPreview),
+  });
 });
 
 siteRouter.get("/site/client/bank-info", requireAuthenticatedActor, async (req, res) => {
@@ -214,7 +315,7 @@ siteRouter.patch(
   }
 );
 
-siteRouter.get("/site/admin/users/:id/bank-info", async (req, res) => {
+siteRouter.get("/site/admin/users/:id/bank-info", requireAdminAuth, async (req, res) => {
   const user = await UserModel.findOne({ id: req.params.id }).lean();
 
   if (!user) {
@@ -230,21 +331,16 @@ siteRouter.get("/site/admin/users/:id/bank-info", async (req, res) => {
 });
 
 siteRouter.get("/site/documents/:id", async (req, res) => {
-  const store = await readStore();
-  const doc = store.documents.find((item) => item.id === req.params.id);
-
-  if (!doc) {
-    return fail(res, 404, "DOCUMENT_NOT_FOUND", "Document not found.");
-  }
-
-  return ok(res, doc);
+  return fail(
+    res,
+    410,
+    "LEGACY_ENDPOINT_REMOVED",
+    "This legacy endpoint has been removed. Use the secure /files endpoints instead."
+  );
 });
 
 siteRouter.get("/site/sessions/:id", async (req, res) => {
-  const store = await readStore();
-  const order =
-    store.orders.find((item) => item.id === req.params.id) ||
-    store.siteNotary.assignmentOrders.find((item) => item.id === req.params.id);
+  const order = await OrderModel.findOne({ id: req.params.id }).lean();
 
   if (!order) {
     return fail(res, 404, "SESSION_NOT_FOUND", "Session not found.");
@@ -252,11 +348,15 @@ siteRouter.get("/site/sessions/:id", async (req, res) => {
 
   return ok(res, {
     id: order.id,
-    title: order.client || order.title,
-    borrower: order.borrower || order.title,
+    title: order.clientCompany || order.clientName,
+    borrower: order.signerName,
     status: order.status,
-    type: order.type || order.orderType,
-    location: order.location,
-    fee: order.fee || "$150.00",
+    type: order.isRon ? "RON" : "In-Person",
+    location: order.isRon
+      ? "Remote Online"
+      : [order.propertyAddress?.city, order.propertyAddress?.state, order.propertyAddress?.zip]
+          .filter(Boolean)
+          .join(", "),
+    fee: toCurrency(order.notaryOfferAmount ?? order.feeAmount ?? 0),
   });
 });

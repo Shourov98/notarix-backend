@@ -93,13 +93,13 @@ Base URL: `/api/v1`
 
 | Method | Endpoint | Access | Purpose |
 |---|---|---|---|
-| GET | `/notary/assignments` | Notary | Get assigned orders |
-| GET | `/notary/assignments/:id` | Notary | Get assignment details |
-| PATCH | `/notary/orders/:id/accept` | Notary | Accept assignment |
-| PATCH | `/notary/orders/:id/reject` | Notary | Reject assignment |
-| PATCH | `/notary/orders/:id/start` | Notary | Mark order in progress |
-| PATCH | `/notary/orders/:id/complete` | Notary | Mark order completed |
-| POST | `/notary/orders/:id/completed-documents` | Notary | Upload signed/completed documents |
+| GET | `/site/notary/assignments` | Notary | Get assigned orders |
+| GET | `/site/notary/assignments/:id` | Notary | Get assignment details |
+| PATCH | `/site/notary/orders/:id/accept` | Notary | Accept assignment |
+| PATCH | `/site/notary/orders/:id/reject` | Notary | Reject assignment |
+| PATCH | `/site/notary/orders/:id/start` | Notary | Mark order in progress |
+| PATCH | `/site/notary/orders/:id/complete` | Notary | Mark order completed |
+| POST | `/site/notary/orders/:id/completed-documents` | Notary | Upload signed/completed documents |
 
 ---
 

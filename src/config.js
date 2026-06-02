@@ -1,5 +1,3 @@
-import path from "node:path";
-
 const resolveNumber = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -68,5 +66,4 @@ export const config = {
     process.env.SOCKET_CORS_ORIGIN,
     "http://localhost:3000,http://localhost:5173"
   ),
-  dataFilePath: path.resolve(process.cwd(), "data", "store.json"),
 };
