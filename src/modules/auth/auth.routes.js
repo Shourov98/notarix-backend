@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   changeAdminPassword,
+  changePortalPassword,
   firstLoginResetPassword,
   firstLoginResetPortalPassword,
   getCurrentAdmin,
@@ -8,6 +9,7 @@ import {
   loginAdmin,
   loginPortalUser,
   logoutAdmin,
+  logoutPortalUser,
   refreshAdminSession,
   resendForgotPasswordOtp,
   resetAdminPassword,
@@ -67,6 +69,25 @@ authRouter.post("/admin/auth/logout", authRateLimit, requireAdminAuth, validate(
 
   return ok(res, { ok: true }, "Logout successful.");
 });
+
+authRouter.post(
+  "/site/auth/logout",
+  authRateLimit,
+  requireAuthenticatedActor,
+  validate(logoutSchema),
+  async (req, res) => {
+    if (req.actor.type !== "user") {
+      return fail(res, 403, "FORBIDDEN", "Only portal users can logout here.");
+    }
+
+    await logoutPortalUser({
+      userId: req.actor.id,
+      refreshToken: req.body?.refreshToken,
+    });
+
+    return ok(res, { ok: true }, "Logout successful.");
+  }
+);
 
 authRouter.post("/admin/auth/forgot-password", authRateLimit, validate(emailSchema), async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
@@ -136,6 +157,33 @@ authRouter.patch("/admin/change-password", authRateLimit, requireAdminAuth, vali
 
   return ok(res, { ok: true }, "Password updated successfully.");
 });
+
+authRouter.patch(
+  "/site/change-password",
+  authRateLimit,
+  requireAuthenticatedActor,
+  validate(changePasswordSchema),
+  async (req, res) => {
+    if (req.actor.type !== "user") {
+      return fail(res, 403, "FORBIDDEN", "Only portal users can change password here.");
+    }
+
+    const currentPassword = String(req.body?.current_password || "");
+    const newPassword = String(req.body?.new_password || "");
+
+    const changed = await changePortalPassword({
+      userId: req.actor.id,
+      currentPassword,
+      newPassword,
+    });
+
+    if (!changed) {
+      return fail(res, 400, "INVALID_PASSWORD", "Current password is incorrect.");
+    }
+
+    return ok(res, { ok: true }, "Password updated successfully.");
+  }
+);
 
 authRouter.patch(
   "/auth/reset-password",

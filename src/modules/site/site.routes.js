@@ -36,6 +36,16 @@ const siteProfileSchema = z.object({
     email: z.string().email(),
     phone: z.string().min(7).optional().or(z.literal("")),
     company: z.string().optional().or(z.literal("")),
+    coverageAreas: z.string().optional().or(z.literal("")),
+    address: z
+      .object({
+        line1: z.string().optional().or(z.literal("")),
+        line2: z.string().optional().or(z.literal("")),
+        city: z.string().optional().or(z.literal("")),
+        state: z.string().optional().or(z.literal("")),
+        zip: z.string().optional().or(z.literal("")),
+      })
+      .optional(),
   }),
   query: z.object({}).passthrough(),
   params: z.object({}).passthrough(),
@@ -46,6 +56,16 @@ const trackedClientDocumentKeys = [
   "w9-form",
   "eo-certificate",
   "business-license",
+];
+
+const trackedNotaryDocumentKeys = [
+  "service-agreement",
+  "billing-setup-form",
+  "contact-confirmation",
+  "w9-form",
+  "business-license",
+  "eo-certificate",
+  "portal-access-authorization",
 ];
 
 const clientProfileDetailsSchema = z.object({
@@ -86,6 +106,73 @@ const clientTrackedDocumentSchema = z.object({
   }),
 });
 
+const notificationPreferencesSchema = z.object({
+  body: z.object({
+    emailNotifications: z.boolean(),
+    orderUpdates: z.boolean(),
+    paymentAlerts: z.boolean(),
+    directMessages: z.boolean(),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+const notaryNotificationPreferencesSchema = z.object({
+  body: z.object({
+    emailNewOrderAssigned: z.boolean(),
+    emailOrderStatusUpdates: z.boolean(),
+    emailPaymentReceived: z.boolean(),
+    inAppNewMessages: z.boolean(),
+    inAppDocumentUploadUpdates: z.boolean(),
+    inAppMeetingRequests: z.boolean(),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+const notaryProfileDetailsSchema = z.object({
+  body: z.object({
+    profile: z.object({
+      name: z.string().min(2),
+      email: z.string().email(),
+      phone: z.string().optional().or(z.literal("")),
+      coverageAreas: z.string().optional().or(z.literal("")),
+    }),
+    address: z.object({
+      line1: z.string().optional().or(z.literal("")),
+      line2: z.string().optional().or(z.literal("")),
+      city: z.string().optional().or(z.literal("")),
+      state: z.string().optional().or(z.literal("")),
+      zip: z.string().optional().or(z.literal("")),
+    }),
+    commission: z.object({
+      number: z.string().optional().or(z.literal("")),
+      state: z.string().optional().or(z.literal("")),
+      expirationDate: z.string().optional().or(z.literal("")),
+      travelRadius: z.string().optional().or(z.literal("")),
+      eoCoverageAmount: z.string().optional().or(z.literal("")),
+    }),
+    additional: z.object({
+      ronApproval: z.enum(["approved", "pending", "not_requested"]).optional().or(z.literal("")),
+      backgroundCheckDate: z.string().optional().or(z.literal("")),
+      specialties: z.array(z.string()).optional(),
+      secondaryContactName: z.string().optional().or(z.literal("")),
+      secondaryContactEmail: z.string().email().optional().or(z.literal("")),
+      secondaryContactPhone: z.string().optional().or(z.literal("")),
+    }),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+const notaryTrackedDocumentSchema = z.object({
+  body: z.object({}).passthrough(),
+  query: z.object({}).passthrough(),
+  params: z.object({
+    documentKey: z.enum(trackedNotaryDocumentKeys),
+  }),
+});
+
 const serializePortalProfile = (user) => ({
   id: user.id,
   name: user.name,
@@ -96,6 +183,32 @@ const serializePortalProfile = (user) => ({
   verification: user.verification,
   avatar: user.avatar ? `/api/v1/files/users/${user.id}/avatar?mode=view` : null,
   ronEligible: Boolean(user.ronEligible),
+  coverageAreas: user.commission?.coverageAreas || "",
+  address: {
+    line1: user.address?.line1 || "",
+    line2: user.address?.line2 || "",
+    city: user.address?.city || "",
+    state: user.address?.state || "",
+    zip: user.address?.zip || "",
+  },
+});
+
+const serializeNotificationPreferences = (user) => ({
+  emailNotifications: user.notificationPreferences?.emailNotifications ?? true,
+  orderUpdates: user.notificationPreferences?.orderUpdates ?? true,
+  paymentAlerts: user.notificationPreferences?.paymentAlerts ?? false,
+  directMessages: user.notificationPreferences?.directMessages ?? true,
+});
+
+const serializeNotaryNotificationPreferences = (user) => ({
+  emailNewOrderAssigned: user.notificationPreferences?.emailNewOrderAssigned ?? true,
+  emailOrderStatusUpdates:
+    user.notificationPreferences?.emailOrderStatusUpdates ?? true,
+  emailPaymentReceived: user.notificationPreferences?.emailPaymentReceived ?? true,
+  inAppNewMessages: user.notificationPreferences?.inAppNewMessages ?? true,
+  inAppDocumentUploadUpdates:
+    user.notificationPreferences?.inAppDocumentUploadUpdates ?? true,
+  inAppMeetingRequests: user.notificationPreferences?.inAppMeetingRequests ?? true,
 });
 
 const trackedClientDocuments = [
@@ -125,6 +238,61 @@ const trackedClientDocuments = [
   },
 ];
 
+const trackedNotaryDocuments = [
+  {
+    key: "service-agreement",
+    title: "Service Agreement",
+    description: "Acknowledgement of platform participation terms.",
+    optional: false,
+    aliases: ["Service Agreement"],
+  },
+  {
+    key: "billing-setup-form",
+    title: "Billing Setup Form",
+    description: "Payment and payout setup confirmation for this notary account.",
+    optional: false,
+    aliases: ["Billing Setup Form"],
+  },
+  {
+    key: "contact-confirmation",
+    title: "Primary & Secondary Contact Confirmation",
+    description: "Confirmation of active contact channels for assignment coordination.",
+    optional: false,
+    aliases: [
+      "Primary & Secondary Contact Confirmation",
+      "Primary and Secondary Contact Confirmation",
+    ],
+  },
+  {
+    key: "w9-form",
+    title: "W-9",
+    description: "Tax identification form for notary payment processing.",
+    optional: false,
+    aliases: ["W-9", "W-9 Form"],
+  },
+  {
+    key: "business-license",
+    title: "Business License or Registration",
+    description: "Business registration or equivalent filing for the notary practice.",
+    optional: false,
+    aliases: ["Business License or Registration", "Business License"],
+  },
+  {
+    key: "eo-certificate",
+    title: "E&O Certificate",
+    description: "Proof of active Errors & Omissions coverage.",
+    optional: false,
+    aliases: ["E&O Certificate", "E&O Insurance"],
+  },
+  {
+    key: "portal-access-authorization",
+    title: "Portal Access Authorization",
+    description: "Internal authorization confirming portal access readiness.",
+    optional: false,
+    aliases: ["Portal Access Authorization"],
+  },
+];
+
 const normalizeClientDocumentKey = (value = "") =>
   String(value)
     .trim()
@@ -141,6 +309,45 @@ const buildTrackedClientDocuments = (user) => {
       storedDocuments.find((document) => document.id === definition.key) ||
       storedDocuments.find(
         (document) => normalizeClientDocumentKey(document.title) === definition.key
+      );
+
+    const hasFile = Boolean(matched?.file);
+    const backendStatus = matched?.status || (hasFile ? "Pending" : "Missing");
+    const displayStatus =
+      backendStatus === "Pending" && hasFile ? "Uploaded" : backendStatus;
+
+    return {
+      id: definition.key,
+      key: definition.key,
+      title: definition.title,
+      description: definition.description,
+      optional: definition.optional,
+      status: backendStatus,
+      displayStatus,
+      fileName: matched?.file ? matched.title || definition.title : "",
+      mimeType: matched?.mimeType || null,
+      size: matched?.size || null,
+      uploadedAt: matched?.uploadedAt || null,
+      viewUrl: matched?.file
+        ? `/api/v1/files/users/${user.id}/documents/${matched.id}?mode=view`
+        : null,
+      downloadUrl: matched?.file
+        ? `/api/v1/files/users/${user.id}/documents/${matched.id}?mode=download`
+        : null,
+    };
+  });
+};
+
+const buildTrackedNotaryDocuments = (user) => {
+  const storedDocuments = user.requiredDocuments || [];
+
+  return trackedNotaryDocuments.map((definition) => {
+    const matched =
+      storedDocuments.find((document) => document.id === definition.key) ||
+      storedDocuments.find((document) =>
+        definition.aliases.some(
+          (alias) => normalizeClientDocumentKey(alias) === normalizeClientDocumentKey(document.title)
+        )
       );
 
     const hasFile = Boolean(matched?.file);
@@ -264,6 +471,105 @@ const serializeClientProfileDetails = (user) => {
     },
     documents,
     activity,
+  };
+};
+
+const serializeNotaryProfileDetails = (user) => {
+  const address = user.address || {};
+  const commission = user.commission || {};
+  const personalInfo = user.personalInfo || {};
+  const secondaryContact = user.secondaryContact || {};
+  const documents = buildTrackedNotaryDocuments(user);
+  const documentUploadedCount = documents.filter((document) => document.status !== "Missing").length;
+
+  const profileChecks = [
+    { key: "profile-photo", label: "Profile Photo", complete: Boolean(user.avatar) },
+    { key: "coverage-areas", label: "Coverage Areas", complete: Boolean(commission.coverageAreas) },
+    { key: "address-line-1", label: "Address Line 1", complete: Boolean(address.line1) },
+    { key: "city", label: "City", complete: Boolean(address.city) },
+    { key: "zip", label: "ZIP", complete: Boolean(address.zip) },
+    {
+      key: "main-office-phone",
+      label: "Main Office Phone",
+      complete: Boolean(personalInfo.phone),
+      actionLabel: personalInfo.phone ? null : "Enter Phone",
+    },
+    {
+      key: "secondary-contact-name",
+      label: "Secondary Contact Name",
+      complete: Boolean(secondaryContact.name),
+    },
+    {
+      key: "secondary-contact-email",
+      label: "Secondary Contact Email",
+      complete: Boolean(secondaryContact.email),
+    },
+    {
+      key: "secondary-contact-phone",
+      label: "Secondary Contact Phone",
+      complete: Boolean(secondaryContact.phone),
+      actionLabel: secondaryContact.phone ? null : "Enter Phone",
+    },
+  ];
+
+  const completedChecks = [
+    ...profileChecks.map((item) => item.complete),
+    ...documents.map((item) => item.status !== "Missing"),
+  ].filter(Boolean).length;
+  const totalChecks = profileChecks.length + documents.length;
+  const completionPercent = totalChecks ? Math.round((completedChecks / totalChecks) * 100) : 0;
+
+  return {
+    profile: {
+      ...serializePortalProfile(user),
+      coverageAreas: commission.coverageAreas || "",
+      address: {
+        line1: address.line1 || "",
+        line2: address.line2 || "",
+        city: address.city || "",
+        state: address.state || "",
+        zip: address.zip || "",
+      },
+    },
+    details: {
+      profile: {
+        name: user.name || personalInfo.fullName || "",
+        email: user.email || personalInfo.email || "",
+        phone: personalInfo.phone || "",
+        coverageAreas: commission.coverageAreas || "",
+      },
+      address: {
+        line1: address.line1 || "",
+        line2: address.line2 || "",
+        city: address.city || "",
+        state: address.state || "",
+        zip: address.zip || "",
+      },
+      commission: {
+        number: commission.number || "",
+        state: commission.state || "",
+        expirationDate: commission.expirationDate || "",
+        travelRadius: commission.travelRadius || "",
+        eoCoverageAmount: commission.eoCoverageAmount || "",
+      },
+      additional: {
+        ronApproval: commission.ronApproval || (user.ronEligible ? "approved" : "pending"),
+        backgroundCheckDate: commission.backgroundCheckDate || "",
+        specialties: Array.isArray(user.specialties) ? user.specialties : [],
+        secondaryContactName: secondaryContact.name || "",
+        secondaryContactEmail: secondaryContact.email || "",
+        secondaryContactPhone: secondaryContact.phone || "",
+      },
+    },
+    verification: {
+      status: user.verification || "Pending",
+      profileChecks,
+      documents,
+      completedChecks,
+      totalChecks,
+      completionPercent,
+      documentUploadedCount,
+    },
   };
 };
 
@@ -443,6 +749,23 @@ siteRouter.get("/site/client/profile-details", requireAuthenticatedActor, async 
   return ok(res, serializeClientProfileDetails(user));
 });
 
+siteRouter.get(
+  "/site/client/notification-preferences",
+  requireAuthenticatedActor,
+  async (req, res) => {
+    if (!ensurePortalRole(req, res, "Client")) {
+      return;
+    }
+
+    const user = await UserModel.findOne({ id: req.actor.id }).lean();
+    if (!user) {
+      return fail(res, 404, "USER_NOT_FOUND", "Client not found.");
+    }
+
+    return ok(res, serializeNotificationPreferences(user));
+  }
+);
+
 siteRouter.get("/site/notary/overview", requireAuthenticatedActor, async (req, res) => {
   if (!ensurePortalRole(req, res, "Notary")) {
     return;
@@ -486,6 +809,23 @@ siteRouter.get("/site/notary/overview", requireAuthenticatedActor, async (req, r
   });
 });
 
+siteRouter.get(
+  "/site/notary/profile-details",
+  requireAuthenticatedActor,
+  async (req, res) => {
+    if (!ensurePortalRole(req, res, "Notary")) {
+      return;
+    }
+
+    const user = await UserModel.findOne({ id: req.actor.id }).lean();
+    if (!user) {
+      return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
+    }
+
+    return ok(res, serializeNotaryProfileDetails(user));
+  }
+);
+
 siteRouter.patch(
   "/site/client/profile",
   requireAuthenticatedActor,
@@ -520,6 +860,42 @@ siteRouter.patch(
 );
 
 siteRouter.patch(
+  "/site/client/notification-preferences",
+  requireAuthenticatedActor,
+  validate(notificationPreferencesSchema),
+  async (req, res) => {
+    if (!ensurePortalRole(req, res, "Client")) {
+      return;
+    }
+
+    const updated = await UserModel.findOneAndUpdate(
+      { id: req.actor.id },
+      {
+        $set: {
+          notificationPreferences: {
+            emailNotifications: req.body.emailNotifications,
+            orderUpdates: req.body.orderUpdates,
+            paymentAlerts: req.body.paymentAlerts,
+            directMessages: req.body.directMessages,
+          },
+        },
+      },
+      { new: true }
+    ).lean();
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "Client not found.");
+    }
+
+    return ok(
+      res,
+      serializeNotificationPreferences(updated),
+      "Notification preferences updated successfully."
+    );
+  }
+);
+
+siteRouter.patch(
   "/site/notary/profile",
   requireAuthenticatedActor,
   validate(siteProfileSchema),
@@ -538,6 +914,12 @@ siteRouter.patch(
           "personalInfo.fullName": req.body.name,
           "personalInfo.email": req.body.email.toLowerCase(),
           "personalInfo.phone": req.body.phone || "",
+          "commission.coverageAreas": req.body.coverageAreas || "",
+          "address.line1": req.body.address?.line1 || "",
+          "address.line2": req.body.address?.line2 || "",
+          "address.city": req.body.address?.city || "",
+          "address.state": req.body.address?.state || "",
+          "address.zip": req.body.address?.zip || "",
         },
       },
       { new: true }
@@ -548,6 +930,59 @@ siteRouter.patch(
     }
 
     return ok(res, serializePortalProfile(updated), "Profile updated successfully.");
+  }
+);
+
+siteRouter.patch(
+  "/site/notary/profile-details",
+  requireAuthenticatedActor,
+  validate(notaryProfileDetailsSchema),
+  async (req, res) => {
+    if (!ensurePortalRole(req, res, "Notary")) {
+      return;
+    }
+
+    const updated = await UserModel.findOneAndUpdate(
+      { id: req.actor.id },
+      {
+        $set: {
+          name: req.body.profile.name,
+          email: req.body.profile.email.toLowerCase(),
+          "personalInfo.fullName": req.body.profile.name,
+          "personalInfo.email": req.body.profile.email.toLowerCase(),
+          "personalInfo.phone": req.body.profile.phone || "",
+          "address.line1": req.body.address.line1 || "",
+          "address.line2": req.body.address.line2 || "",
+          "address.city": req.body.address.city || "",
+          "address.state": req.body.address.state || "",
+          "address.zip": req.body.address.zip || "",
+          "commission.coverageAreas": req.body.profile.coverageAreas || "",
+          "commission.number": req.body.commission.number || "",
+          "commission.state": req.body.commission.state || "",
+          "commission.expirationDate": req.body.commission.expirationDate || "",
+          "commission.travelRadius": req.body.commission.travelRadius || "",
+          "commission.eoCoverageAmount": req.body.commission.eoCoverageAmount || "",
+          "commission.ronApproval": req.body.additional.ronApproval || "",
+          "commission.backgroundCheckDate": req.body.additional.backgroundCheckDate || "",
+          "secondaryContact.name": req.body.additional.secondaryContactName || "",
+          "secondaryContact.email": req.body.additional.secondaryContactEmail || "",
+          "secondaryContact.phone": req.body.additional.secondaryContactPhone || "",
+          specialties: req.body.additional.specialties || [],
+          ronEligible: req.body.additional.ronApproval === "approved",
+        },
+      },
+      { new: true }
+    ).lean();
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
+    }
+
+    return ok(
+      res,
+      serializeNotaryProfileDetails(updated),
+      "Profile details updated successfully."
+    );
   }
 );
 
@@ -714,6 +1149,149 @@ siteRouter.post(
     }
 
     return ok(res, serializePortalProfile(updated), "Profile photo uploaded successfully.", 201);
+  }
+);
+
+siteRouter.get(
+  "/site/notary/notification-preferences",
+  requireAuthenticatedActor,
+  async (req, res) => {
+    if (!ensurePortalRole(req, res, "Notary")) {
+      return;
+    }
+
+    const user = await UserModel.findOne({ id: req.actor.id }).lean();
+    if (!user) {
+      return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
+    }
+
+    return ok(res, serializeNotaryNotificationPreferences(user));
+  }
+);
+
+siteRouter.patch(
+  "/site/notary/notification-preferences",
+  requireAuthenticatedActor,
+  validate(notaryNotificationPreferencesSchema),
+  async (req, res) => {
+    if (!ensurePortalRole(req, res, "Notary")) {
+      return;
+    }
+
+    const updated = await UserModel.findOneAndUpdate(
+      { id: req.actor.id },
+      {
+        $set: {
+          "notificationPreferences.emailNewOrderAssigned":
+            req.body.emailNewOrderAssigned,
+          "notificationPreferences.emailOrderStatusUpdates":
+            req.body.emailOrderStatusUpdates,
+          "notificationPreferences.emailPaymentReceived":
+            req.body.emailPaymentReceived,
+          "notificationPreferences.inAppNewMessages":
+            req.body.inAppNewMessages,
+          "notificationPreferences.inAppDocumentUploadUpdates":
+            req.body.inAppDocumentUploadUpdates,
+          "notificationPreferences.inAppMeetingRequests":
+            req.body.inAppMeetingRequests,
+        },
+      },
+      { new: true }
+    ).lean();
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
+    }
+
+    return ok(
+      res,
+      serializeNotaryNotificationPreferences(updated),
+      "Notification preferences updated successfully."
+    );
+  }
+);
+
+siteRouter.post(
+  "/site/notary/profile-documents/:documentKey",
+  requireAuthenticatedActor,
+  validate(notaryTrackedDocumentSchema),
+  upload.single("document"),
+  async (req, res) => {
+    if (!ensurePortalRole(req, res, "Notary")) {
+      return;
+    }
+
+    if (!req.file) {
+      return fail(res, 400, "FILE_REQUIRED", "A document file is required.");
+    }
+
+    const definition = trackedNotaryDocuments.find(
+      (item) => item.key === req.params.documentKey
+    );
+    if (!definition) {
+      return fail(res, 400, "INVALID_DOCUMENT", "Unsupported document type.");
+    }
+
+    const user = await UserModel.findOne({ id: req.actor.id });
+    if (!user) {
+      return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
+    }
+
+    const currentDocuments = user.requiredDocuments || [];
+    const nextDocument = {
+      id: definition.key,
+      title: definition.title,
+      status: "Pending",
+      file: req.file.filename,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      uploadedAt: new Date(),
+    };
+
+    const nextDocuments = currentDocuments.filter(
+      (document) =>
+        document.id !== definition.key &&
+        !definition.aliases.some(
+          (alias) => normalizeClientDocumentKey(alias) === normalizeClientDocumentKey(document.title)
+        )
+    );
+    nextDocuments.push(nextDocument);
+
+    user.requiredDocuments = nextDocuments;
+    await user.save();
+
+    return ok(
+      res,
+      serializeNotaryProfileDetails(user.toObject()),
+      `${definition.title} uploaded successfully.`,
+      201
+    );
+  }
+);
+
+siteRouter.post(
+  "/site/notary/verification/submit",
+  requireAuthenticatedActor,
+  async (req, res) => {
+    if (!ensurePortalRole(req, res, "Notary")) {
+      return;
+    }
+
+    const updated = await UserModel.findOneAndUpdate(
+      { id: req.actor.id },
+      { $set: { verification: "Pending Review" } },
+      { new: true }
+    ).lean();
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "Notary not found.");
+    }
+
+    return ok(
+      res,
+      serializeNotaryProfileDetails(updated),
+      "Verification submitted for review."
+    );
   }
 );
 

@@ -28,6 +28,22 @@ const maskedBankInfoSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const notificationPreferencesSchema = new mongoose.Schema(
+  {
+    emailNotifications: { type: Boolean, default: true },
+    orderUpdates: { type: Boolean, default: true },
+    paymentAlerts: { type: Boolean, default: false },
+    directMessages: { type: Boolean, default: true },
+    emailNewOrderAssigned: { type: Boolean, default: true },
+    emailOrderStatusUpdates: { type: Boolean, default: true },
+    emailPaymentReceived: { type: Boolean, default: true },
+    inAppNewMessages: { type: Boolean, default: true },
+    inAppDocumentUploadUpdates: { type: Boolean, default: true },
+    inAppMeetingRequests: { type: Boolean, default: true },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     id: { type: String, required: true, unique: true, index: true },
@@ -62,6 +78,10 @@ const userSchema = new mongoose.Schema(
     bankInfoEncrypted: { type: String, default: null },
     bankInfoMasked: { type: maskedBankInfoSchema, default: () => ({}) },
     bankInfoUpdatedAt: { type: Date, default: null },
+    notificationPreferences: {
+      type: notificationPreferencesSchema,
+      default: () => ({}),
+    },
   },
   {
     timestamps: true,
