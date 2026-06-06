@@ -4,6 +4,12 @@ const orderDocumentSchema = new mongoose.Schema(
   {
     id: { type: String, required: true },
     name: { type: String, required: true },
+    status: {
+      type: String,
+      enum: ["Pending", "Verified", "Rejected"],
+      default: "Pending",
+    },
+    reviewNote: { type: String, default: "" },
     file: { type: String, default: null },
     mimeType: { type: String, default: null },
     size: { type: Number, default: null },

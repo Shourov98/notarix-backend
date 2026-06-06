@@ -102,6 +102,18 @@ const orderStatusSchema = z.object({
   params: z.object({ id: z.string().min(1) }),
 });
 
+const orderDocumentStatusSchema = z.object({
+  body: z.object({
+    status: z.enum(["Pending", "Verified", "Rejected"]),
+    reviewNote: z.string().optional(),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({
+    id: z.string().min(1),
+    documentId: z.string().min(1),
+  }),
+});
+
 const assignNotarySchema = z.object({
   body: z.object({
     notaryId: z.string().min(1),
@@ -206,6 +218,8 @@ const serializeAdminOrderDetail = (order) => ({
   documents: (order.documents || []).map((document) => ({
     id: document.id,
     name: document.name,
+    status: document.status || "Pending",
+    reviewNote: document.reviewNote || "",
     url: document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
       : null,
@@ -253,6 +267,36 @@ const serializeClientOrder = (order) => ({
     ? { name: order.notary, avatar: null }
     : null,
 });
+
+const hasVerifiedOrderDocuments = (order) =>
+  Array.isArray(order?.documents) &&
+  order.documents.length > 0 &&
+  order.documents.every((document) => document?.status === "Verified");
+
+const assertVerifiedOrderDocuments = (res, order, message) => {
+  if (!Array.isArray(order?.documents) || order.documents.length === 0) {
+    fail(
+      res,
+      400,
+      "ORDER_DOCUMENTS_REQUIRED",
+      "At least one client-uploaded order document is required before this action."
+    );
+    return true;
+  }
+
+  if (!hasVerifiedOrderDocuments(order)) {
+    fail(
+      res,
+      400,
+      "ORDER_DOCUMENTS_UNVERIFIED",
+      message ||
+        "All client-uploaded order documents must be verified before this action."
+    );
+    return true;
+  }
+
+  return false;
+};
 
 const serializeNotaryAssignment = (order) => ({
   id: `#${order.id}`,
@@ -911,6 +955,15 @@ ordersRouter.patch(
     if (assertTransitionOrFail(res, current.status, "Accepted By Admin")) {
       return;
     }
+    if (
+      assertVerifiedOrderDocuments(
+        res,
+        current,
+        "All client-uploaded order documents must be verified before accepting the order."
+      )
+    ) {
+      return;
+    }
 
     const updated = await updateOrderStatus({
       id: req.params.id,
@@ -1073,6 +1126,15 @@ ordersRouter.patch(
       return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
     }
     if (assertTransitionOrFail(res, current.status, "Notary Assigned")) {
+      return;
+    }
+    if (
+      assertVerifiedOrderDocuments(
+        res,
+        current,
+        "All client-uploaded order documents must be verified before assigning a notary."
+      )
+    ) {
       return;
     }
 
@@ -1445,6 +1507,8 @@ ordersRouter.post(
     const nextDocuments = files.map((file) => ({
       id: `doc-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
       name: file.originalname,
+      status: "Pending",
+      reviewNote: "",
       file: file.filename,
       mimeType: file.mimetype,
       size: file.size,
@@ -1470,6 +1534,8 @@ ordersRouter.post(
       (updated.documents || []).map((document) => ({
         id: document.id,
         name: document.name,
+        status: document.status || "Pending",
+        reviewNote: document.reviewNote || "",
         url: document.file
           ? `/api/v1/files/orders/${updated.id}/documents/${document.id}?mode=view`
           : null,
@@ -1482,6 +1548,55 @@ ordersRouter.post(
       })),
       "Order documents uploaded successfully.",
       201
+    );
+  }
+);
+
+ordersRouter.patch(
+  "/admin/orders/:id/documents/:documentId/status",
+  requireAdminAuth,
+  validate(orderDocumentStatusSchema),
+  async (req, res) => {
+    const order = await findOrderById(req.params.id).lean();
+    if (!order) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
+    }
+
+    const nextDocuments = [...(order.documents || [])];
+    const document = nextDocuments.find((item) => item.id === req.params.documentId);
+
+    if (!document) {
+      return fail(res, 404, "DOCUMENT_NOT_FOUND", "Order document not found.");
+    }
+
+    document.status = req.body.status;
+    document.reviewNote = req.body.reviewNote || "";
+
+    const updated = await OrderModel.findOneAndUpdate(
+      { id: order.id },
+      { $set: { documents: nextDocuments } },
+      { new: true }
+    ).lean();
+
+    await createAuditLog({
+      action: "order.document_reviewed",
+      entityType: "order",
+      entityId: updated.id,
+      title: "Order document reviewed",
+      summary: `${document.name} marked as ${req.body.status}.`,
+      actor: req.admin,
+      metadata: {
+        documentId: document.id,
+        documentName: document.name,
+        status: req.body.status,
+        reviewNote: document.reviewNote || "",
+      },
+    });
+
+    return ok(
+      res,
+      serializeAdminOrderDetail(updated),
+      `Order document marked as ${req.body.status}.`
     );
   }
 );

@@ -981,7 +981,7 @@ usersRouter.post(
         existingDocuments,
         createDocumentRecord({
           title,
-          status: "Pending",
+          status: "Verified",
           file: file.filename,
           mimeType: file.mimetype,
           size: file.size,

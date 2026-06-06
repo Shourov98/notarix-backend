@@ -165,15 +165,26 @@ requestsRouter.patch("/admin/requests/:id/approve", requireAdminAuth, async (req
   }
 
   const requestId = req.params.id;
-  const result = await UserRequestModel.findOneAndUpdate(
-    { id: requestId },
-    { status: "Approved" },
-    { new: true, lean: true }
-  );
+  const existing = await UserRequestModel.findOne({ id: requestId }).lean();
 
-  if (!result) {
+  if (!existing) {
     return fail(res, 404, "REQUEST_NOT_FOUND", "Request not found.");
   }
+
+  if (existing.status !== "Pending") {
+    return fail(
+      res,
+      409,
+      "REQUEST_ALREADY_REVIEWED",
+      `This request has already been ${String(existing.status || "reviewed").toLowerCase()}.`
+    );
+  }
+
+  const result = await UserRequestModel.findOneAndUpdate(
+    { id: requestId },
+    { status: "Approved", rejectionReason: "" },
+    { new: true, lean: true }
+  );
 
   await queueEmail({
     to: result.email,
@@ -202,6 +213,21 @@ requestsRouter.patch("/admin/requests/:id/reject", requireAdminAuth, validate(re
   }
 
   const requestId = req.params.id;
+  const existing = await UserRequestModel.findOne({ id: requestId }).lean();
+
+  if (!existing) {
+    return fail(res, 404, "REQUEST_NOT_FOUND", "Request not found.");
+  }
+
+  if (existing.status !== "Pending") {
+    return fail(
+      res,
+      409,
+      "REQUEST_ALREADY_REVIEWED",
+      `This request has already been ${String(existing.status || "reviewed").toLowerCase()}.`
+    );
+  }
+
   const result = await UserRequestModel.findOneAndUpdate(
     { id: requestId },
     {
