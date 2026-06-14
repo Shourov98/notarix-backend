@@ -139,6 +139,7 @@ const notaryCreateSchema = z.object({
 const userDocumentStatusSchema = z.object({
   body: z.object({
     status: z.enum(["Pending", "Verified", "Rejected", "Missing"]),
+    reviewNote: z.string().optional(),
   }),
   query: z.object({}).passthrough(),
   params: z.object({
@@ -253,6 +254,7 @@ const serializeAdminDocumentRow = (user, document) => {
       : "Not set",
     uploadedAt: document.uploadedAt || null,
     status: document.status || "Missing",
+    reviewNote: document.reviewNote || "",
     selected: false,
     file: document.file || null,
     url: document.url || null,
@@ -1042,6 +1044,7 @@ usersRouter.patch(
     }
 
     document.status = req.body.status;
+    document.reviewNote = req.body.reviewNote || "";
     if (req.body.status === "Missing") {
       document.file = null;
       document.mimeType = null;
@@ -1061,7 +1064,12 @@ usersRouter.patch(
       title: "Document review updated",
       summary: `${document.title} marked as ${req.body.status}.`,
       actor: req.admin,
-      metadata: { documentId: document.id, title: document.title, status: req.body.status },
+      metadata: {
+        documentId: document.id,
+        title: document.title,
+        status: req.body.status,
+        reviewNote: document.reviewNote || "",
+      },
     });
 
     return ok(res, serializeUser(updated).requiredDocuments || [], "Document status updated.");

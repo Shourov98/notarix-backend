@@ -320,6 +320,122 @@ const serializeNotaryAssignment = (order) => ({
   workflowStatus: order.status,
 });
 
+const serializeNotaryAssignmentDetail = (order) => {
+  const originalDocuments = (order.documents || []).map((document) => ({
+    id: document.id,
+    name: document.name,
+    status: document.status || "Pending",
+    reviewNote: document.reviewNote || "",
+    url: document.file
+      ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
+      : null,
+    downloadUrl: document.file
+      ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=download`
+      : null,
+    mimeType: document.mimeType || null,
+    size: document.size || null,
+    uploadedAt: document.uploadedAt || null,
+  }));
+
+  const completedDocuments = (order.completedDocuments || []).map((document) => ({
+    id: document.id,
+    name: document.name,
+    url: document.file
+      ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
+      : null,
+    downloadUrl: document.file
+      ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=download`
+      : null,
+    mimeType: document.mimeType || null,
+    size: document.size || null,
+    uploadedAt: document.uploadedAt || null,
+  }));
+
+  const documentVerification = {
+    total: originalDocuments.length,
+    verified: originalDocuments.filter((document) => document.status === "Verified").length,
+    pending: originalDocuments.filter((document) => document.status === "Pending").length,
+    rejected: originalDocuments.filter((document) => document.status === "Rejected").length,
+  };
+
+  return {
+    ...serializeNotaryAssignment(order),
+    client: {
+      name: order.clientName || "",
+      company: order.clientCompany || "",
+      email: order.clientEmail || "",
+      vendorCode: order.vendorCode || "",
+    },
+    borrower: {
+      name: order.signerName || "",
+      email: order.signerEmail || "",
+      phone: order.signerPhone || "",
+      firstName: order.signerFirstName || "",
+      lastName: order.signerLastName || "",
+      hasSecondarySigner: Boolean(order.hasSecondarySigner),
+    },
+    property: {
+      line1: order.propertyAddress?.line1 || "",
+      city: order.propertyAddress?.city || "",
+      state: order.propertyAddress?.state || "",
+      zip: order.propertyAddress?.zip || "",
+      timeZone: order.propertyAddress?.timeZone || "",
+      fullAddress: [
+        order.propertyAddress?.line1,
+        order.propertyAddress?.city,
+        order.propertyAddress?.state,
+        order.propertyAddress?.zip,
+      ]
+        .filter(Boolean)
+        .join(", "),
+    },
+    schedule: {
+      signingDate: order.signingDate,
+      signingTime: order.signingTime,
+      dateTime: `${order.signingDate} ${order.signingTime}`.trim(),
+    },
+    service: {
+      type: order.serviceType || "",
+      orderType: order.isRon ? "Remote Online" : "In-Person",
+      mode: order.isRon ? "Digital Notarization" : "Physical Signing",
+      isRon: Boolean(order.isRon),
+    },
+    payment: {
+      feeAmount: Number(order.feeAmount || 0),
+      paymentStatus: order.paymentStatus || "Pending",
+      paymentMethod: order.paymentMethod || "",
+      dueDate: order.dueDate || "",
+      paidDate: order.paidDate || "",
+      paymentNotes: order.paymentNotes || "",
+      notaryOfferAmount: Number(order.notaryOfferAmount ?? order.feeAmount ?? 0),
+      payoutReleaseDays:
+        typeof order.payoutReleaseDays === "number" ? order.payoutReleaseDays : null,
+      payoutDueDate: order.payoutDueDate || null,
+      assignmentNotes: order.assignmentNotes || "",
+    },
+    preferences: {
+      paperSize: order.paperSize || "Letter",
+      preferredInk: order.preferredInk || "Black",
+      estimatedPages: order.estimatedPages || "",
+    },
+    specialInstructions: order.specialInstructions || "",
+    statusHistory: buildTimeline(order),
+    documents: originalDocuments,
+    completedDocuments,
+    documentVerification,
+    actionState: {
+      canAccept: order.status === "Notary Assigned",
+      canReject: order.status === "Notary Assigned",
+      canStart: order.status === "Accepted By Notary",
+      canUploadCompletedDocuments: ["In Progress", "Completed"].includes(order.status),
+      canComplete:
+        order.status === "In Progress" && (order.completedDocuments || []).length > 0,
+      requiresCompletedDocumentsForCompletion:
+        order.status === "In Progress" && (order.completedDocuments || []).length === 0,
+    },
+  };
+};
+
 const createStatusHistoryEntry = (status, actor, note = "") => ({
   status,
   note,
@@ -672,7 +788,7 @@ ordersRouter.get(
       return fail(res, 404, "ORDER_NOT_FOUND", "Assignment not found.");
     }
 
-    return ok(res, serializeAdminOrderDetail(order));
+    return ok(res, serializeNotaryAssignmentDetail(order));
   }
 );
 

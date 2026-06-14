@@ -9,6 +9,7 @@ const requiredDocumentSchema = new mongoose.Schema(
       enum: ["Missing", "Pending", "Verified", "Rejected"],
       default: "Missing",
     },
+    reviewNote: { type: String, default: "" },
     file: { type: String, default: null },
     mimeType: { type: String, default: null },
     size: { type: Number, default: null },
