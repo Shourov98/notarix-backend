@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { Router } from "express";
 import { z } from "zod";
 import { config } from "../../config.js";
@@ -56,9 +57,29 @@ const paymentProofSchema = z.object({
 
 const isAdmin = (actor) => actor?.type === "admin";
 
-const sendStoredFile = (res, file, mode = "view") => {
-  if (!file?.file) {
+const sendRemoteFile = async (res, file, mode = "view") => {
+  const response = await fetch(file.url);
+  if (!response.ok || !response.body) {
+    return fail(res, 404, "FILE_NOT_FOUND", "Remote file is not available.");
+  }
+
+  if (file.mimeType) {
+    res.type(file.mimeType);
+  }
+
+  const disposition = mode === "download" ? "attachment" : "inline";
+  res.setHeader("Content-Disposition", `${disposition}; filename="${file.name || "document"}"`);
+  Readable.fromWeb(response.body).pipe(res);
+  return undefined;
+};
+
+const sendStoredFile = async (res, file, mode = "view") => {
+  if (!file?.file && !file?.url) {
     return fail(res, 404, "FILE_NOT_FOUND", "File not found.");
+  }
+
+  if (file?.url) {
+    return sendRemoteFile(res, file, mode);
   }
 
   const absolutePath = path.resolve(process.cwd(), config.uploadTmpDir, file.file);
@@ -97,8 +118,9 @@ filesRouter.get(
     return sendStoredFile(
       res,
       {
-        name: path.basename(avatarFile),
-        file: avatarFile,
+        name: path.basename(String(user.avatar)),
+        file: String(user.avatar).startsWith("http") ? null : avatarFile,
+        url: String(user.avatar).startsWith("http") ? user.avatar : null,
         mimeType: null,
       },
       req.query.mode

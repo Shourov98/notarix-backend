@@ -1,13 +1,15 @@
 import crypto from "node:crypto";
 import { hashPassword } from "../security/password.js";
 import { AdminModel } from "../../modules/users/admin.model.js";
+
 const DEFAULT_SUPER_ADMIN_NAME = "Notarix Super Admin";
 const DEFAULT_SUPER_ADMIN_EMAIL = "admin@notarix.io";
 const DEFAULT_SUPER_ADMIN_PASSWORD = "Admin12345!";
+const isProduction = (process.env.NODE_ENV || "development") === "production";
 
 export const ensureSuperAdminSeed = async () => {
   const email = String(
-    process.env.SUPER_ADMIN_EMAIL || DEFAULT_SUPER_ADMIN_EMAIL
+    isProduction ? process.env.SUPER_ADMIN_EMAIL : process.env.SUPER_ADMIN_EMAIL || DEFAULT_SUPER_ADMIN_EMAIL
   )
     .trim()
     .toLowerCase();
@@ -18,7 +20,11 @@ export const ensureSuperAdminSeed = async () => {
   }
 
   const passwordHash = await hashPassword(
-    String(process.env.SUPER_ADMIN_PASSWORD || DEFAULT_SUPER_ADMIN_PASSWORD)
+    String(
+      isProduction
+        ? process.env.SUPER_ADMIN_PASSWORD
+        : process.env.SUPER_ADMIN_PASSWORD || DEFAULT_SUPER_ADMIN_PASSWORD
+    )
   );
 
   const record = {

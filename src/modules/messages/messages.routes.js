@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireAuthenticatedActor } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
+import { storeUploadedFile } from "../../shared/storage/cloudinary.js";
 import { upload } from "../../shared/storage/upload.js";
 import { emitConversationMessage } from "../../shared/realtime/socket.js";
 import { ConversationModel } from "./conversation.model.js";
@@ -61,12 +62,14 @@ const requireConversationParticipant = async (conversationId, actor) => {
   return { conversation };
 };
 
-const buildAttachmentRecord = (file) => ({
+const buildAttachmentRecord = (file, stored) => ({
   id: `att-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
   name: file.originalname,
-  file: file.filename,
-  mimeType: file.mimetype,
-  size: file.size,
+  provider: stored.provider,
+  file: stored.file,
+  url: stored.url,
+  mimeType: stored.mimeType,
+  size: stored.size,
   kind: file.mimetype?.startsWith("image/") ? "image" : "file",
   uploadedAt: new Date(),
 });
@@ -165,7 +168,14 @@ messagesRouter.post(
       return fail(res, result.error[0] === "FORBIDDEN" ? 403 : 404, result.error[0], result.error[1]);
     }
 
-    const attachments = (req.files || []).map(buildAttachmentRecord);
+    const attachments = await Promise.all(
+      (req.files || []).map(async (file) =>
+        buildAttachmentRecord(
+          file,
+          await storeUploadedFile(file, { folder: "notarix/messages/attachments" })
+        )
+      )
+    );
     if (attachments.length === 0) {
       return fail(res, 400, "FILE_REQUIRED", "At least one attachment is required.");
     }

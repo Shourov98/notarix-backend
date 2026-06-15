@@ -12,6 +12,7 @@ import {
 } from "../../shared/http/pagination.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { upload } from "../../shared/storage/upload.js";
+import { storeUploadedFile } from "../../shared/storage/cloudinary.js";
 import { OrderModel } from "./order.model.js";
 import { UserModel } from "../users/user.model.js";
 import { queueEmail } from "../../shared/notifications/email.service.js";
@@ -1574,14 +1575,23 @@ ordersRouter.post(
       );
     }
 
-    const files = (req.files || []).map((file) => ({
-      id: `doc-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
-      name: file.originalname,
-      file: file.filename,
-      mimeType: file.mimetype,
-      size: file.size,
-      uploadedAt: new Date(),
-    }));
+    const files = await Promise.all(
+      (req.files || []).map(async (file) => {
+        const stored = await storeUploadedFile(file, {
+          folder: "notarix/orders/completed-documents",
+        });
+        return {
+          id: `doc-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+          name: file.originalname,
+          provider: stored.provider,
+          file: stored.file,
+          url: stored.url,
+          mimeType: stored.mimeType,
+          size: stored.size,
+          uploadedAt: new Date(),
+        };
+      })
+    );
 
     const updated = await appendOrderDocuments({
       orderId: req.params.id,
@@ -1619,17 +1629,25 @@ ordersRouter.post(
       return fail(res, 403, "FORBIDDEN", "Only client users can upload order documents.");
     }
 
-    const files = req.files || [];
-    const nextDocuments = files.map((file) => ({
-      id: `doc-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
-      name: file.originalname,
-      status: "Pending",
-      reviewNote: "",
-      file: file.filename,
-      mimeType: file.mimetype,
-      size: file.size,
-      uploadedAt: new Date(),
-    }));
+    const nextDocuments = await Promise.all(
+      (req.files || []).map(async (file) => {
+        const stored = await storeUploadedFile(file, {
+          folder: "notarix/orders/documents",
+        });
+        return {
+          id: `doc-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+          name: file.originalname,
+          status: "Pending",
+          reviewNote: "",
+          provider: stored.provider,
+          file: stored.file,
+          url: stored.url,
+          mimeType: stored.mimeType,
+          size: stored.size,
+          uploadedAt: new Date(),
+        };
+      })
+    );
 
     const updated = await OrderModel.findOneAndUpdate(
       { id: normalizeId(req.params.id), clientUserId: req.actor.id },

@@ -27,23 +27,62 @@ const resolveList = (value, fallback) =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
+const isProduction = (process.env.NODE_ENV || "development") === "production";
+
+const isPlaceholder = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized.includes("replace_with") ||
+    normalized === "change_me" ||
+    normalized === "localhost" ||
+    normalized === "admin12345!"
+  );
+};
+
+const requiredInProduction = (name, { allowPlaceholder = false } = {}) => {
+  const value = process.env[name];
+  if (!isProduction) {
+    return value;
+  }
+
+  if (!value || (!allowPlaceholder && isPlaceholder(value))) {
+    throw new Error(`Missing or unsafe production configuration: ${name}`);
+  }
+
+  return value;
+};
+
 const ensureSafeProductionSecrets = () => {
-  if ((process.env.NODE_ENV || "development") !== "production") {
+  if (!isProduction) {
     return;
   }
 
   const missing = [];
-  if (!process.env.JWT_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET.includes("replace_with")) {
-    missing.push("JWT_ACCESS_SECRET");
+  const requiredNames = [
+    "APP_URL",
+    "MONGODB_URI",
+    "JWT_ACCESS_SECRET",
+    "JWT_REFRESH_SECRET",
+    "BANK_INFO_ENCRYPTION_KEY",
+    "SUPER_ADMIN_EMAIL",
+    "SUPER_ADMIN_PASSWORD",
+    "CORS_ORIGIN",
+    "SOCKET_CORS_ORIGIN",
+  ];
+
+  if ((process.env.STORAGE_PROVIDER || "local") === "cloudinary") {
+    requiredNames.push(
+      "CLOUDINARY_CLOUD_NAME",
+      "CLOUDINARY_API_KEY",
+      "CLOUDINARY_API_SECRET"
+    );
   }
-  if (!process.env.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET.includes("replace_with")) {
-    missing.push("JWT_REFRESH_SECRET");
-  }
-  if (
-    !process.env.BANK_INFO_ENCRYPTION_KEY ||
-    process.env.BANK_INFO_ENCRYPTION_KEY.includes("replace_with")
-  ) {
-    missing.push("BANK_INFO_ENCRYPTION_KEY");
+
+  for (const name of requiredNames) {
+    if (isPlaceholder(process.env[name])) {
+      missing.push(name);
+    }
   }
 
   if (missing.length > 0) {
@@ -55,20 +94,37 @@ const ensureSafeProductionSecrets = () => {
 
 ensureSafeProductionSecrets();
 
+const defaultClientUrl = isProduction ? "" : "http://localhost:3000";
+const defaultAdminUrl = isProduction ? "" : "http://localhost:5173";
+const defaultAppUrl = isProduction ? "" : "http://localhost:5191";
+const defaultMongoUri = isProduction ? "" : "mongodb://127.0.0.1:27017/notarix";
+const configuredCorsOrigin =
+  process.env.CORS_ORIGIN ||
+  [process.env.CLIENT_APP_URL, process.env.ADMIN_APP_URL, defaultClientUrl, defaultAdminUrl]
+    .filter(Boolean)
+    .join(",");
+const configuredSocketCorsOrigin =
+  process.env.SOCKET_CORS_ORIGIN || configuredCorsOrigin;
+
 export const config = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: resolveNumber(process.env.PORT, 5191),
   apiPrefix: process.env.API_PREFIX || "/api/v1",
-  appUrl: process.env.APP_URL || "http://localhost:5191",
-  clientAppUrl: process.env.CLIENT_APP_URL || "http://localhost:3000",
-  adminAppUrl: process.env.ADMIN_APP_URL || "http://localhost:5173",
-  tokenSecret: process.env.JWT_ACCESS_SECRET || "notarix-dev-access-secret",
-  refreshSecret: process.env.JWT_REFRESH_SECRET || "notarix-dev-refresh-secret",
+  appUrl: requiredInProduction("APP_URL", { allowPlaceholder: false }) || defaultAppUrl,
+  clientAppUrl: process.env.CLIENT_APP_URL || defaultClientUrl,
+  adminAppUrl: process.env.ADMIN_APP_URL || defaultAdminUrl,
+  tokenSecret:
+    requiredInProduction("JWT_ACCESS_SECRET", { allowPlaceholder: false }) ||
+    "notarix-dev-access-secret",
+  refreshSecret:
+    requiredInProduction("JWT_REFRESH_SECRET", { allowPlaceholder: false }) ||
+    "notarix-dev-refresh-secret",
   bankInfoEncryptionKey:
-    process.env.BANK_INFO_ENCRYPTION_KEY || "notarix-dev-bank-info-secret",
-  mongodbUri: process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/notarix",
+    requiredInProduction("BANK_INFO_ENCRYPTION_KEY", { allowPlaceholder: false }) ||
+    "notarix-dev-bank-info-secret",
+  mongodbUri: requiredInProduction("MONGODB_URI", { allowPlaceholder: false }) || defaultMongoUri,
   mongodbDbName: process.env.MONGODB_DB_NAME || "notarix",
-  mongodbOptional: process.env.MONGODB_OPTIONAL !== "false",
+  mongodbOptional: isProduction ? false : process.env.MONGODB_OPTIONAL !== "false",
   maxFileSizeMb: resolveNumber(process.env.MAX_FILE_SIZE_MB, 25),
   authRateLimitWindowMs: resolveNumber(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
   authRateLimitMax: resolveNumber(process.env.AUTH_RATE_LIMIT_MAX, 25),
@@ -76,12 +132,10 @@ export const config = {
   apiRateLimitMax: resolveNumber(process.env.API_RATE_LIMIT_MAX, 300),
   uploadTmpDir: process.env.UPLOAD_TMP_DIR || "tmp/uploads",
   requestIdHeader: process.env.REQUEST_ID_HEADER || "x-request-id",
-  corsOrigins: resolveList(
-    process.env.CORS_ORIGIN,
-    `${process.env.CLIENT_APP_URL || "http://localhost:3000"},${process.env.ADMIN_APP_URL || "http://localhost:5173"}`
-  ),
-  socketCorsOrigin: resolveList(
-    process.env.SOCKET_CORS_ORIGIN,
-    "http://localhost:3000,http://localhost:5173"
-  ),
+  storageProvider: process.env.STORAGE_PROVIDER || "local",
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || "",
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || "",
+  corsOrigins: resolveList(configuredCorsOrigin, ""),
+  socketCorsOrigin: resolveList(configuredSocketCorsOrigin, ""),
 };

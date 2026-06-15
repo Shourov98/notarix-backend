@@ -10,6 +10,7 @@ import {
   parsePaginationQuery,
 } from "../../shared/http/pagination.js";
 import { validate } from "../../shared/middleware/validate.js";
+import { storeUploadedFile } from "../../shared/storage/cloudinary.js";
 import { upload } from "../../shared/storage/upload.js";
 import { OrderModel } from "../orders/order.model.js";
 import { PaymentModel } from "./payment.model.js";
@@ -458,11 +459,16 @@ paymentsRouter.post(
     }
 
     const sideKey = target === "client" ? "clientPayment" : "notaryPayout";
+    const stored = await storeUploadedFile(req.file, {
+      folder: "notarix/payments/proofs",
+    });
     const proof = {
       name: req.file.originalname,
-      file: req.file.filename,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
+      provider: stored.provider,
+      file: stored.file,
+      url: stored.url,
+      mimeType: stored.mimeType,
+      size: stored.size,
       uploadedAt: new Date(),
     };
 

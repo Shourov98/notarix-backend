@@ -20,6 +20,7 @@ import {
 } from "../../shared/security/bank-info.js";
 import { hashPassword } from "../../shared/security/password.js";
 import { upload } from "../../shared/storage/upload.js";
+import { storeUploadedFile } from "../../shared/storage/cloudinary.js";
 import { createAuditLog } from "../audit/audit.service.js";
 import { AdminModel } from "./admin.model.js";
 import { UserModel } from "./user.model.js";
@@ -224,7 +225,9 @@ const createDocumentRecord = (document) => ({
   id: document.id || `doc-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
   title: document.title,
   status: document.status || (document.file ? "Pending" : "Missing"),
+  provider: document.provider || "local",
   file: document.file || null,
+  url: document.url || null,
   mimeType: document.mimeType,
   size: document.size,
   uploadedAt: document.uploadedAt || new Date(),
@@ -938,10 +941,12 @@ usersRouter.post(
       return fail(res, 400, "INVALID_FILE_TYPE", "Only image files are allowed for profile photos.");
     }
 
-    const avatarPath = `/uploads/${req.file.filename}`;
+    const stored = await storeUploadedFile(req.file, {
+      folder: "notarix/users/profile-photos",
+    });
     const updated = await UserModel.findOneAndUpdate(
       { id: req.params.id },
-      { $set: { avatar: avatarPath } },
+      { $set: { avatar: stored.url } },
       { new: true }
     ).lean();
 
@@ -976,17 +981,28 @@ usersRouter.post(
       return fail(res, 404, "USER_NOT_FOUND", "User not found.");
     }
 
+    await Promise.all(
+      files.map(async (file) => {
+        file.__stored = await storeUploadedFile(file, {
+          folder: "notarix/users/documents",
+        });
+      })
+    );
+
     const existingDocuments = [...(user.requiredDocuments || [])];
     files.forEach((file, index) => {
       const title = documentTitles[index] || file.originalname;
+      const stored = file.__stored;
       upsertRequiredDocument(
         existingDocuments,
         createDocumentRecord({
           title,
           status: "Verified",
-          file: file.filename,
-          mimeType: file.mimetype,
-          size: file.size,
+          provider: stored?.provider || "local",
+          file: stored?.file || null,
+          url: stored?.url || null,
+          mimeType: stored?.mimeType || file.mimetype,
+          size: stored?.size || file.size,
         })
       );
     });

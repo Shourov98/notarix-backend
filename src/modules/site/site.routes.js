@@ -7,6 +7,7 @@ import {
 import { fail, ok } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { upload } from "../../shared/storage/upload.js";
+import { storeUploadedFile } from "../../shared/storage/cloudinary.js";
 import {
   buildMaskedBankInfo,
   decryptBankInfo,
@@ -1003,10 +1004,12 @@ siteRouter.post(
       return fail(res, 400, "INVALID_FILE_TYPE", "Only image files are allowed for profile photos.");
     }
 
-    const avatarPath = `/uploads/${req.file.filename}`;
+    const stored = await storeUploadedFile(req.file, {
+      folder: "notarix/users/profile-photos",
+    });
     const updated = await UserModel.findOneAndUpdate(
       { id: req.actor.id },
-      { $set: { avatar: avatarPath } },
+      { $set: { avatar: stored.url } },
       { new: true }
     ).lean();
 
@@ -1091,13 +1094,18 @@ siteRouter.post(
     }
 
     const currentDocuments = user.requiredDocuments || [];
+    const stored = await storeUploadedFile(req.file, {
+      folder: "notarix/users/client-documents",
+    });
     const nextDocument = {
       id: definition.key,
       title: definition.title,
       status: "Pending",
-      file: req.file.filename,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
+      provider: stored.provider,
+      file: stored.file,
+      url: stored.url,
+      mimeType: stored.mimeType,
+      size: stored.size,
       uploadedAt: new Date(),
     };
 
@@ -1137,10 +1145,12 @@ siteRouter.post(
       return fail(res, 400, "INVALID_FILE_TYPE", "Only image files are allowed for profile photos.");
     }
 
-    const avatarPath = `/uploads/${req.file.filename}`;
+    const stored = await storeUploadedFile(req.file, {
+      folder: "notarix/users/profile-photos",
+    });
     const updated = await UserModel.findOneAndUpdate(
       { id: req.actor.id },
-      { $set: { avatar: avatarPath } },
+      { $set: { avatar: stored.url } },
       { new: true }
     ).lean();
 
@@ -1238,13 +1248,18 @@ siteRouter.post(
     }
 
     const currentDocuments = user.requiredDocuments || [];
+    const stored = await storeUploadedFile(req.file, {
+      folder: "notarix/users/notary-documents",
+    });
     const nextDocument = {
       id: definition.key,
       title: definition.title,
       status: "Pending",
-      file: req.file.filename,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
+      provider: stored.provider,
+      file: stored.file,
+      url: stored.url,
+      mimeType: stored.mimeType,
+      size: stored.size,
       uploadedAt: new Date(),
     };
 
