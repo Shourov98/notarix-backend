@@ -3,7 +3,9 @@ import mongoose from "mongoose";
 const paymentFileSchema = new mongoose.Schema(
   {
     name: { type: String, default: "" },
+    provider: { type: String, default: "local" },
     file: { type: String, default: null },
+    url: { type: String, default: null },
     mimeType: { type: String, default: "" },
     size: { type: Number, default: null },
     uploadedAt: { type: Date, default: Date.now },

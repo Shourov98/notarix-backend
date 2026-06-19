@@ -9,7 +9,10 @@ const requiredDocumentSchema = new mongoose.Schema(
       enum: ["Missing", "Pending", "Verified", "Rejected"],
       default: "Missing",
     },
+    reviewNote: { type: String, default: "" },
+    provider: { type: String, default: "local" },
     file: { type: String, default: null },
+    url: { type: String, default: null },
     mimeType: { type: String, default: null },
     size: { type: Number, default: null },
     uploadedAt: { type: Date, default: Date.now },
@@ -24,6 +27,22 @@ const maskedBankInfoSchema = new mongoose.Schema(
     accountType: { type: String, default: null },
     routingNumber: { type: String, default: null },
     accountNumber: { type: String, default: null },
+  },
+  { _id: false }
+);
+
+const notificationPreferencesSchema = new mongoose.Schema(
+  {
+    emailNotifications: { type: Boolean, default: true },
+    orderUpdates: { type: Boolean, default: true },
+    paymentAlerts: { type: Boolean, default: false },
+    directMessages: { type: Boolean, default: true },
+    emailNewOrderAssigned: { type: Boolean, default: true },
+    emailOrderStatusUpdates: { type: Boolean, default: true },
+    emailPaymentReceived: { type: Boolean, default: true },
+    inAppNewMessages: { type: Boolean, default: true },
+    inAppDocumentUploadUpdates: { type: Boolean, default: true },
+    inAppMeetingRequests: { type: Boolean, default: true },
   },
   { _id: false }
 );
@@ -62,6 +81,10 @@ const userSchema = new mongoose.Schema(
     bankInfoEncrypted: { type: String, default: null },
     bankInfoMasked: { type: maskedBankInfoSchema, default: () => ({}) },
     bankInfoUpdatedAt: { type: Date, default: null },
+    notificationPreferences: {
+      type: notificationPreferencesSchema,
+      default: () => ({}),
+    },
   },
   {
     timestamps: true,

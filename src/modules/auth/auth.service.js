@@ -191,6 +191,24 @@ export const logoutAdmin = async ({ adminId, refreshToken }) => {
   return { ok: true };
 };
 
+export const logoutPortalUser = async ({ userId, refreshToken }) => {
+  await UserModel.updateMany(
+    {
+      $or: [
+        { id: userId },
+        ...(refreshToken ? [{ refreshToken }] : []),
+      ],
+    },
+    {
+      $set: {
+        refreshToken: null,
+      },
+    }
+  );
+
+  return { ok: true };
+};
+
 export const refreshAdminSession = async (refreshToken) => {
   const admin = await AdminModel.findOne({ refreshToken }).lean();
 
@@ -230,6 +248,32 @@ export const changeAdminPassword = async ({ adminId, currentPassword, newPasswor
     {
       $set: {
         passwordHash: nextHash,
+      },
+    }
+  );
+
+  return true;
+};
+
+export const changePortalPassword = async ({ userId, currentPassword, newPassword }) => {
+  const user = await UserModel.findOne({ id: userId }).lean();
+
+  const matches = user?.passwordHash
+    ? await comparePassword(currentPassword, user.passwordHash)
+    : false;
+
+  if (!user || !matches) {
+    return false;
+  }
+
+  const nextHash = await hashPassword(newPassword);
+
+  await UserModel.updateOne(
+    { id: userId },
+    {
+      $set: {
+        passwordHash: nextHash,
+        passwordResetRequired: false,
       },
     }
   );

@@ -5,7 +5,12 @@ import {
   requireAuthenticatedActor,
 } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
+import {
+  buildPaginationMeta,
+  parsePaginationQuery,
+} from "../../shared/http/pagination.js";
 import { validate } from "../../shared/middleware/validate.js";
+import { storeUploadedFile } from "../../shared/storage/cloudinary.js";
 import { upload } from "../../shared/storage/upload.js";
 import { OrderModel } from "../orders/order.model.js";
 import { PaymentModel } from "./payment.model.js";
@@ -24,6 +29,8 @@ const listPaymentsSchema = z.object({
     search: z.string().optional(),
     status: z.string().optional(),
     type: z.enum(["Inbound", "Outbound"]).optional(),
+    page: z.string().optional(),
+    pageSize: z.string().optional(),
   }).passthrough(),
   params: z.object({}).passthrough(),
 });
@@ -268,10 +275,14 @@ paymentsRouter.get(
 
       return true;
     });
+    const { page, pageSize, skip } = parsePaginationQuery(req.query);
+    const totalItems = rows.length;
+    const items = rows.slice(skip, skip + pageSize);
 
     return ok(res, {
       summary: buildPaymentSummary(payments),
-      payments: rows,
+      items,
+      pagination: buildPaginationMeta({ page, pageSize, totalItems }),
     });
   }
 );
@@ -448,11 +459,16 @@ paymentsRouter.post(
     }
 
     const sideKey = target === "client" ? "clientPayment" : "notaryPayout";
+    const stored = await storeUploadedFile(req.file, {
+      folder: "notarix/payments/proofs",
+    });
     const proof = {
       name: req.file.originalname,
-      file: req.file.filename,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
+      provider: stored.provider,
+      file: stored.file,
+      url: stored.url,
+      mimeType: stored.mimeType,
+      size: stored.size,
       uploadedAt: new Date(),
     };
 

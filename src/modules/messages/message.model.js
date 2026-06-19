@@ -4,7 +4,9 @@ const attachmentSchema = new mongoose.Schema(
   {
     id: { type: String, required: true },
     name: { type: String, required: true },
+    provider: { type: String, default: "local" },
     file: { type: String, required: true },
+    url: { type: String, default: null },
     mimeType: { type: String, default: null },
     size: { type: Number, default: null },
     kind: { type: String, enum: ["image", "file"], default: "file" },

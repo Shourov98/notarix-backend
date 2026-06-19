@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { readStore } from "../../store.js";
 import { requireAdminAuth } from "../../shared/http/auth-middleware.js";
 import { ok } from "../../shared/http/respond.js";
 import { summarizeAdminConsole } from "../dashboard/dashboard.service.js";
 import { AdminModel } from "../users/admin.model.js";
 import { UserModel } from "../users/user.model.js";
 import { OrderModel } from "../orders/order.model.js";
+import { PaymentModel } from "../payments/payment.model.js";
+import { MessageModel } from "../messages/message.model.js";
 
 export const adminRouter = Router();
 
@@ -39,34 +40,82 @@ const serializeAdminOrder = (order) => ({
   fee: `$${Number(order.feeAmount || 0).toFixed(2)}`,
 });
 
+const buildNotaryRows = (users, orders) =>
+  users
+    .filter((user) => user.role === "Notary")
+    .map((user) => ({
+      id: user.id,
+      name: user.name,
+      location: user.area || user.address?.state || "Coverage unknown",
+      radius: user.commission?.travelRadius || "Not specified",
+      status: user.status || "Pending",
+      jobs: `${orders.filter((order) => order.notaryId === user.id && order.status === "Completed").length} Jobs Completed`,
+      tags: [
+        ...(user.ronEligible ? ["RON"] : []),
+        ...((user.specialties || []).filter(Boolean)),
+      ].slice(0, 3),
+      avatarTone: user.avatarTone || "bg-slate-200 text-slate-700",
+    }));
+
+const buildDocumentRows = (users) =>
+  users.flatMap((user) =>
+    (user.requiredDocuments || []).map((document) => ({
+      id: document.id || `${user.id}-${document.title}`,
+      orderId: "",
+      uploadedBy: user.name,
+      uploadedByLabel: user.name,
+      title: document.title,
+      status: document.status || "Missing",
+      file: document.file || null,
+    }))
+  );
+
+const buildMessageRows = (messages) =>
+  messages.map((message) => ({
+    id: message.id,
+    senderName: message.senderName,
+    senderRole: message.senderRole,
+    orderId: message.orderId,
+    preview: message.body || (message.attachments?.[0]?.name ? `Attachment: ${message.attachments[0].name}` : ""),
+    createdAt: message.createdAt,
+  }));
+
 adminRouter.get("/admin/console", requireAdminAuth, async (req, res) => {
-  const [store, admins, users, orders] = await Promise.all([
-    readStore(),
+  const [admins, users, orders, payments, messages] = await Promise.all([
     AdminModel.find().lean(),
     UserModel.find().lean(),
     OrderModel.find().sort({ createdAt: -1 }).lean(),
+    PaymentModel.find().sort({ createdAt: -1 }).lean(),
+    MessageModel.find().sort({ createdAt: -1 }).limit(20).lean(),
   ]);
   const snapshot = {
-    ...store,
     admins,
     users,
     orders: orders.map(serializeAdminOrder),
+    notaries: buildNotaryRows(users, orders),
+    documents: buildDocumentRows(users),
+    payments,
+    messages: buildMessageRows(messages),
+    supportTickets: [],
   };
   return ok(res, summarizeAdminConsole(snapshot, req.admin));
 });
 
 adminRouter.get("/admin/dashboard/stats", requireAdminAuth, async (req, res) => {
-  const [store, admins, users, orders] = await Promise.all([
-    readStore(),
+  const [admins, users, orders] = await Promise.all([
     AdminModel.find().lean(),
     UserModel.find().lean(),
     OrderModel.find().sort({ createdAt: -1 }).lean(),
   ]);
   const snapshot = {
-    ...store,
     admins,
     users,
     orders: orders.map(serializeAdminOrder),
+    notaries: buildNotaryRows(users, orders),
+    documents: buildDocumentRows(users),
+    payments: [],
+    messages: [],
+    supportTickets: [],
   };
   return ok(res, summarizeAdminConsole(snapshot, req.admin).metrics);
 });

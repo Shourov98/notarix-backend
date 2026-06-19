@@ -7,6 +7,10 @@ import {
   requireAdminRole,
 } from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
+import {
+  buildPaginationMeta,
+  parsePaginationQuery,
+} from "../../shared/http/pagination.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { queueEmail } from "../../shared/notifications/email.service.js";
 import {
@@ -16,6 +20,7 @@ import {
 } from "../../shared/security/bank-info.js";
 import { hashPassword } from "../../shared/security/password.js";
 import { upload } from "../../shared/storage/upload.js";
+import { storeUploadedFile } from "../../shared/storage/cloudinary.js";
 import { createAuditLog } from "../audit/audit.service.js";
 import { AdminModel } from "./admin.model.js";
 import { UserModel } from "./user.model.js";
@@ -135,6 +140,7 @@ const notaryCreateSchema = z.object({
 const userDocumentStatusSchema = z.object({
   body: z.object({
     status: z.enum(["Pending", "Verified", "Rejected", "Missing"]),
+    reviewNote: z.string().optional(),
   }),
   query: z.object({}).passthrough(),
   params: z.object({
@@ -152,6 +158,42 @@ const bankInfoSchema = z.object({
     accountNumber: z.string().regex(/^\d{6,17}$/),
   }),
   query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+const adminUsersListSchema = z.object({
+  body: z.object({}).passthrough(),
+  query: z.object({
+    search: z.string().optional(),
+    role: z.string().optional(),
+    status: z.string().optional(),
+    page: z.string().optional(),
+    pageSize: z.string().optional(),
+  }).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+const adminAdminsListSchema = z.object({
+  body: z.object({}).passthrough(),
+  query: z.object({
+    search: z.string().optional(),
+    role: z.string().optional(),
+    status: z.string().optional(),
+    page: z.string().optional(),
+    pageSize: z.string().optional(),
+  }).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+const adminDocumentsListSchema = z.object({
+  body: z.object({}).passthrough(),
+  query: z.object({
+    search: z.string().optional(),
+    role: z.string().optional(),
+    status: z.string().optional(),
+    page: z.string().optional(),
+    pageSize: z.string().optional(),
+  }).passthrough(),
   params: z.object({}).passthrough(),
 });
 
@@ -183,11 +225,45 @@ const createDocumentRecord = (document) => ({
   id: document.id || `doc-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
   title: document.title,
   status: document.status || (document.file ? "Pending" : "Missing"),
+  provider: document.provider || "local",
   file: document.file || null,
+  url: document.url || null,
   mimeType: document.mimeType,
   size: document.size,
   uploadedAt: document.uploadedAt || new Date(),
 });
+
+const serializeAdminDocumentRow = (user, document) => {
+  const safeUser = serializeUser(user);
+
+  return {
+    id: document.id,
+    name: document.title,
+    title: document.title,
+    orderId: "",
+    uploadedBy: safeUser.name,
+    uploadedByLabel: safeUser.name,
+    uploadedById: safeUser.id,
+    uploadedByEmail: safeUser.email,
+    userId: safeUser.id,
+    role: safeUser.role,
+    type: safeUser.role === "Notary" ? "Notary" : "Client",
+    date: document.uploadedAt
+      ? new Date(document.uploadedAt).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "Not set",
+    uploadedAt: document.uploadedAt || null,
+    status: document.status || "Missing",
+    reviewNote: document.reviewNote || "",
+    selected: false,
+    file: document.file || null,
+    url: document.url || null,
+    downloadUrl: document.downloadUrl || null,
+  };
+};
 
 const upsertRequiredDocument = (documents, nextDocument) => {
   const existingIndex = documents.findIndex(
@@ -241,7 +317,7 @@ const listMissingNotaryDocuments = (documents = []) =>
       )
   );
 
-usersRouter.get("/admin/users", requireAdminAuth, async (req, res) => {
+usersRouter.get("/admin/users", requireAdminAuth, validate(adminUsersListSchema), async (req, res) => {
   const search = String(req.query.search || "").trim().toLowerCase();
   const role = String(req.query.role || "").trim().toLowerCase();
   const status = String(req.query.status || "").trim().toLowerCase();
@@ -262,9 +338,16 @@ usersRouter.get("/admin/users", requireAdminAuth, async (req, res) => {
     ];
   }
 
-  const filtered = await UserModel.find(query).sort({ createdAt: -1 }).lean();
+  const { page, pageSize, skip } = parsePaginationQuery(req.query);
+  const [totalItems, filtered] = await Promise.all([
+    UserModel.countDocuments(query),
+    UserModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize).lean(),
+  ]);
 
-  return ok(res, filtered);
+  return ok(res, {
+    items: filtered,
+    pagination: buildPaginationMeta({ page, pageSize, totalItems }),
+  });
 });
 
 usersRouter.get("/admin/users/:id", requireAdminAuth, async (req, res) => {
@@ -559,10 +642,32 @@ usersRouter.get(
   "/admin/admins",
   requireAdminAuth,
   requireAdminRole("super_admin"),
-  async (_req, res) => {
-    const adminRecords = await AdminModel.find()
-      .sort({ createdAt: -1 })
-      .lean();
+  validate(adminAdminsListSchema),
+  async (req, res) => {
+    const search = String(req.query.search || "").trim();
+    const role = String(req.query.role || "").trim();
+    const status = String(req.query.status || "").trim();
+
+    const query = {};
+    if (role) {
+      query.role = new RegExp(`^${role}$`, "i");
+    }
+    if (status) {
+      query.status = new RegExp(`^${status}$`, "i");
+    }
+    if (search) {
+      query.$or = [
+        { id: { $regex: search, $options: "i" } },
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const { page, pageSize, skip } = parsePaginationQuery(req.query);
+    const [totalItems, adminRecords] = await Promise.all([
+      AdminModel.countDocuments(query),
+      AdminModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize).lean(),
+    ]);
     const admins = adminRecords.map((admin) => ({
       id: admin.id,
       name: admin.name,
@@ -575,7 +680,63 @@ usersRouter.get(
       createdAt: admin.createdAt || null,
     }));
 
-    return ok(res, admins);
+    return ok(res, {
+      items: admins,
+      pagination: buildPaginationMeta({ page, pageSize, totalItems }),
+    });
+  }
+);
+
+usersRouter.get(
+  "/admin/documents",
+  requireAdminAuth,
+  validate(adminDocumentsListSchema),
+  async (req, res) => {
+    const search = String(req.query.search || "").trim().toLowerCase();
+    const role = String(req.query.role || "").trim().toLowerCase();
+    const status = String(req.query.status || "").trim().toLowerCase();
+
+    const userQuery = {};
+    if (role && role !== "internal") {
+      userQuery.role = new RegExp(`^${role}$`, "i");
+    }
+
+    const users = await UserModel.find(userQuery).sort({ createdAt: -1 }).lean();
+    const rows = users
+      .flatMap((user) =>
+        (serializeUser(user).requiredDocuments || []).map((document) =>
+          serializeAdminDocumentRow(user, document)
+        )
+      )
+      .filter((row) => {
+        if (status && row.status.toLowerCase() !== status) {
+          return false;
+        }
+
+        if (!search) {
+          return true;
+        }
+
+        return [
+          row.id,
+          row.name,
+          row.uploadedBy,
+          row.uploadedByEmail,
+          row.type,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(search));
+      })
+      .sort((left, right) => new Date(right.uploadedAt || 0) - new Date(left.uploadedAt || 0));
+
+    const { page, pageSize, skip } = parsePaginationQuery(req.query);
+    const totalItems = rows.length;
+    const items = rows.slice(skip, skip + pageSize);
+
+    return ok(res, {
+      items,
+      pagination: buildPaginationMeta({ page, pageSize, totalItems }),
+    });
   }
 );
 
@@ -780,10 +941,12 @@ usersRouter.post(
       return fail(res, 400, "INVALID_FILE_TYPE", "Only image files are allowed for profile photos.");
     }
 
-    const avatarPath = `/uploads/${req.file.filename}`;
+    const stored = await storeUploadedFile(req.file, {
+      folder: "notarix/users/profile-photos",
+    });
     const updated = await UserModel.findOneAndUpdate(
       { id: req.params.id },
-      { $set: { avatar: avatarPath } },
+      { $set: { avatar: stored.url } },
       { new: true }
     ).lean();
 
@@ -818,17 +981,28 @@ usersRouter.post(
       return fail(res, 404, "USER_NOT_FOUND", "User not found.");
     }
 
+    await Promise.all(
+      files.map(async (file) => {
+        file.__stored = await storeUploadedFile(file, {
+          folder: "notarix/users/documents",
+        });
+      })
+    );
+
     const existingDocuments = [...(user.requiredDocuments || [])];
     files.forEach((file, index) => {
       const title = documentTitles[index] || file.originalname;
+      const stored = file.__stored;
       upsertRequiredDocument(
         existingDocuments,
         createDocumentRecord({
           title,
-          status: "Pending",
-          file: file.filename,
-          mimeType: file.mimetype,
-          size: file.size,
+          status: "Verified",
+          provider: stored?.provider || "local",
+          file: stored?.file || null,
+          url: stored?.url || null,
+          mimeType: stored?.mimeType || file.mimetype,
+          size: stored?.size || file.size,
         })
       );
     });
@@ -886,6 +1060,7 @@ usersRouter.patch(
     }
 
     document.status = req.body.status;
+    document.reviewNote = req.body.reviewNote || "";
     if (req.body.status === "Missing") {
       document.file = null;
       document.mimeType = null;
@@ -905,7 +1080,12 @@ usersRouter.patch(
       title: "Document review updated",
       summary: `${document.title} marked as ${req.body.status}.`,
       actor: req.admin,
-      metadata: { documentId: document.id, title: document.title, status: req.body.status },
+      metadata: {
+        documentId: document.id,
+        title: document.title,
+        status: req.body.status,
+        reviewNote: document.reviewNote || "",
+      },
     });
 
     return ok(res, serializeUser(updated).requiredDocuments || [], "Document status updated.");
