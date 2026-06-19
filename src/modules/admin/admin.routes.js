@@ -1,12 +1,21 @@
 import { Router } from "express";
 import { requireAdminAuth } from "../../shared/http/auth-middleware.js";
-import { ok } from "../../shared/http/respond.js";
+import { fail, ok } from "../../shared/http/respond.js";
+import { validate } from "../../shared/middleware/validate.js";
 import { summarizeAdminConsole } from "../dashboard/dashboard.service.js";
 import { AdminModel } from "../users/admin.model.js";
 import { UserModel } from "../users/user.model.js";
 import { OrderModel } from "../orders/order.model.js";
 import { PaymentModel } from "../payments/payment.model.js";
 import { MessageModel } from "../messages/message.model.js";
+import { adminStore } from "./admin.store.js";
+import {
+  companySettingsUpdateSchema,
+  notificationPreferencesUpdateSchema,
+  supportTicketCreateSchema,
+  supportTicketUpdateSchema,
+} from "./admin.schemas.js";
+import { emitAdminAudience } from "../../shared/realtime/socket.js";
 
 export const adminRouter = Router();
 
@@ -119,3 +128,99 @@ adminRouter.get("/admin/dashboard/stats", requireAdminAuth, async (req, res) => 
   };
   return ok(res, summarizeAdminConsole(snapshot, req.admin).metrics);
 });
+
+adminRouter.get("/admin/support/tickets", requireAdminAuth, async (req, res) => {
+  const { status, search } = req.query;
+  const tickets = adminStore.listSupportTickets({ status, search });
+  return ok(res, tickets, "Support tickets fetched.");
+});
+
+adminRouter.get("/admin/support/tickets/:id", requireAdminAuth, async (req, res) => {
+  const ticket = adminStore.getSupportTicket(req.params.id);
+  if (!ticket) {
+    return fail(res, 404, "TICKET_NOT_FOUND", "Support ticket not found.");
+  }
+  return ok(res, ticket, "Support ticket fetched.");
+});
+
+adminRouter.post(
+  "/admin/support/tickets",
+  requireAdminAuth,
+  validate(supportTicketCreateSchema),
+  async (req, res) => {
+    const ticket = adminStore.createSupportTicket(req.body);
+    emitAdminAudience("support_ticket_created", ticket);
+    return ok(res, ticket, "Support ticket created.", 201);
+  }
+);
+
+adminRouter.patch(
+  "/admin/support/tickets/:id",
+  requireAdminAuth,
+  validate(supportTicketUpdateSchema),
+  async (req, res) => {
+    const ticket = adminStore.updateSupportTicket(req.params.id, req.body);
+    if (!ticket) {
+      return fail(res, 404, "TICKET_NOT_FOUND", "Support ticket not found.");
+    }
+    emitAdminAudience("support_ticket_updated", ticket);
+    return ok(res, ticket, "Support ticket updated.");
+  }
+);
+
+adminRouter.get("/admin/settings/company", requireAdminAuth, async (_req, res) => {
+  return ok(res, adminStore.getCompanySettings(), "Company settings fetched.");
+});
+
+adminRouter.patch(
+  "/admin/settings/company",
+  requireAdminAuth,
+  validate(companySettingsUpdateSchema),
+  async (req, res) => {
+    const settings = adminStore.updateCompanySettings(req.body);
+    return ok(res, settings, "Company settings updated.");
+  }
+);
+
+adminRouter.get("/admin/settings/notifications", requireAdminAuth, async (req, res) => {
+  const prefs = adminStore.getNotificationPreferences(req.admin.id);
+  return ok(res, prefs, "Notification preferences fetched.");
+});
+
+adminRouter.patch(
+  "/admin/settings/notifications",
+  requireAdminAuth,
+  validate(notificationPreferencesUpdateSchema),
+  async (req, res) => {
+    const prefs = adminStore.updateNotificationPreferences(req.admin.id, req.body);
+    return ok(res, prefs, "Notification preferences updated.");
+  }
+);
+
+adminRouter.get("/admin/settings/security", requireAdminAuth, async (req, res) => {
+  const currentSession = {
+    id: "current",
+    device: "Web Dashboard",
+    ip: req.ip || "127.0.0.1",
+    lastActive: new Date().toISOString(),
+    current: true,
+  };
+  const admin = await AdminModel.findById(req.admin.id).lean();
+  return ok(
+    res,
+    {
+      sessions: [currentSession],
+      passwordLastChanged: admin?.updatedAt || null,
+      twoFactorEnabled: false,
+    },
+    "Security settings fetched."
+  );
+});
+
+adminRouter.post(
+  "/admin/settings/security/sessions/:id/revoke",
+  requireAdminAuth,
+  async (_req, res) => {
+    return ok(res, { ok: true }, "Session revoked.");
+  }
+);

@@ -111,3 +111,10 @@ export const emitNotificationEvent = (notification) => {
     socketServer.to("audience:admin").emit("new_notification", notification);
   }
 };
+
+export const emitAdminAudience = (eventName, payload) => {
+  if (!socketServer || !eventName) {
+    return;
+  }
+  socketServer.to("audience:admin").emit(eventName, payload);
+};
