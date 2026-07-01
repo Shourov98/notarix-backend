@@ -26,7 +26,24 @@ Two parallel fields are tracked on the Order but do **not** drive the workflow s
 
 ---
 
-## State Diagram (Mermaid)
+## State Diagram
+
+![Order flow chart](order_flow.png)
+
+Source: `order_flow.dot` (Graphviz) — regenerate with `dot -Tsvg order_flow.dot -o order_flow.svg && dot -Tpng -Gdpi=160 order_flow.dot -o order_flow.png`.
+
+**Color legend**
+
+- **Blue boxes** — intermediate states
+- **Yellow box** — `Needs Reassignment` (recovery state)
+- **Green double circle** — terminal success (`Completed`)
+- **Red double circles** — terminal failure (`Rejected By Admin`, `Cancelled`)
+- **Green arrows** — Client-initiated transitions
+- **Blue arrows** — Admin approve / assign transitions
+- **Orange arrows** — Reassignment transitions
+- **Red arrows** — Reject / cancel transitions
+
+### Mermaid fallback (for viewers that don't render the PNG)
 
 ```mermaid
 stateDiagram-v2
@@ -202,3 +219,10 @@ Only the **admin** can cancel. There is no client or notary cancel endpoint. The
 - State machine helpers: `src/modules/orders/order-workflow.service.js`
 - Routes: `src/modules/orders/orders.routes.js`
 - Side effects: `src/shared/realtime/socket.js` (`emitOrderStatusUpdated`, `emitAssignmentUpdated`)
+
+## Files in this folder
+
+- `order_flow.md` — this document
+- `order_flow.dot` — Graphviz source for the diagram
+- `order_flow.png` — rendered raster diagram (160 DPI)
+- `order_flow.svg` — rendered vector diagram (sharp at any zoom)

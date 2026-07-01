@@ -1,0 +1,64 @@
+digraph OrderFlow {
+    rankdir=LR;
+    bgcolor="white";
+    fontname="Helvetica";
+    pad="0.5";
+    nodesep="0.45";
+    ranksep="0.7";
+
+    node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, color="#2349db", penwidth=1.4];
+    edge [fontname="Helvetica", fontsize=9, color="#475569", penwidth=1.2, arrowsize=0.8];
+
+    // Entry
+    start  [label="ORDER CREATED\n(by Client)", shape=circle, fillcolor="#2349db", fontcolor="white", width=1.4, fixedsize=true];
+
+    // Intermediate states
+    pending   [label="Pending\nAdmin Review",   fillcolor="#dbeafe", fontcolor="#0c1d56"];
+    accepted  [label="Accepted\nBy Admin",      fillcolor="#dbeafe", fontcolor="#0c1d56"];
+    assigned  [label="Notary\nAssigned",        fillcolor="#dbeafe", fontcolor="#0c1d56"];
+    an        [label="Accepted\nBy Notary",     fillcolor="#dbeafe", fontcolor="#0c1d56"];
+    prog      [label="In\nProgress",            fillcolor="#dbeafe", fontcolor="#0c1d56"];
+    needs     [label="Needs\nReassignment",     fillcolor="#fef3c7", fontcolor="#78350f"];
+
+    // Terminal states
+    done      [label="COMPLETED",               shape=doublecircle, fillcolor="#dcfce7", fontcolor="#14532d", width=1.6, fixedsize=true];
+    rej       [label="REJECTED\nBY ADMIN",      shape=doublecircle, fillcolor="#fee2e2", fontcolor="#7f1d1d", width=1.6, fixedsize=true];
+    cancel    [label="CANCELLED",               shape=doublecircle, fillcolor="#fee2e2", fontcolor="#7f1d1d", width=1.6, fixedsize=true];
+
+    // Entry
+    start -> pending [label="Client\nPOST /site/orders", color="#16a34a", fontcolor="#16a34a"];
+
+    // Pending Admin Review transitions
+    pending  -> accepted  [label="Admin accepts\nPATCH /admin/orders/:id/accept", color="#2563eb"];
+    pending  -> rej       [label="Admin rejects\nPATCH /admin/orders/:id/reject", color="#dc2626"];
+    pending  -> cancel    [label="Admin cancels\nPATCH /admin/orders/:id/status", color="#dc2626"];
+
+    // Accepted By Admin transitions
+    accepted -> assigned  [label="Admin assigns notary\nPATCH /admin/orders/:id/assign-notary", color="#2563eb"];
+    accepted -> rej       [label="Admin rejects\nPATCH /admin/orders/:id/reject", color="#dc2626"];
+    accepted -> cancel    [label="Admin cancels\nPATCH /admin/orders/:id/status", color="#dc2626"];
+
+    // Notary Assigned transitions
+    assigned -> an        [label="Notary accepts\nPATCH /site/notary/orders/:id/accept", color="#16a34a"];
+    assigned -> needs     [label="Notary rejects\nPATCH /site/notary/orders/:id/reject", color="#f59e0b"];
+    assigned -> needs     [label="Admin forces reassign\nPATCH /admin/orders/:id/status", color="#f59e0b"];
+    assigned -> cancel    [label="Admin cancels\nPATCH /admin/orders/:id/status", color="#dc2626"];
+
+    // Accepted By Notary transitions
+    an       -> prog      [label="Notary starts\nPATCH /site/notary/orders/:id/start", color="#16a34a"];
+    an       -> needs     [label="Admin forces reassign\nPATCH /admin/orders/:id/status", color="#f59e0b"];
+    an       -> cancel    [label="Admin cancels\nPATCH /admin/orders/:id/status", color="#dc2626"];
+
+    // Needs Reassignment transitions
+    needs    -> assigned  [label="Admin reassigns notary\nPATCH /admin/orders/:id/reassign-notary", color="#2563eb"];
+    needs    -> cancel    [label="Admin cancels\nPATCH /admin/orders/:id/status", color="#dc2626"];
+
+    // In Progress transitions
+    prog     -> done      [label="Notary completes\nPATCH /site/notary/orders/:id/complete", color="#16a34a"];
+    prog     -> done      [label="Admin override\nPATCH /admin/orders/:id/status", color="#16a34a"];
+    prog     -> cancel    [label="Admin cancels\nPATCH /admin/orders/:id/status", color="#dc2626"];
+
+    // Rank alignment to keep flow horizontal
+    { rank=same; pending; accepted; assigned; an; prog; }
+    { rank=same; rej; needs; cancel; }
+}
