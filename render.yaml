@@ -15,6 +15,10 @@ services:
         sync: false
       - key: APP_URL
         sync: false
+      - key: CLIENT_APP_URL
+        sync: false
+      - key: ADMIN_APP_URL
+        sync: false
       - key: MONGODB_URI
         sync: false
       - key: MONGODB_DB_NAME
@@ -53,3 +57,39 @@ services:
         value: 900000
       - key: API_RATE_LIMIT_MAX
         value: 300
+      - key: EMAIL_PROVIDER
+        value: gmail
+      - key: AWS_SES_REGION
+        value: us-east-1
+      - key: AWS_SES_FROM_EMAIL
+        sync: false
+      - key: AWS_SES_REPLY_TO
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: Notarix
+      - key: EMAIL_FROM_ADDRESS
+        sync: false
+      - key: EMAIL_REPLY_TO
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_WORKER_DISABLED
+        value: "false"
+      - key: EMAIL_WORKER_INTERVAL_MS
+        value: "5000"
+      - key: EMAIL_WORKER_BATCH_SIZE
+        value: "10"
+      - key: EMAIL_WORKER_MAX_ATTEMPTS
+        value: "3"
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false

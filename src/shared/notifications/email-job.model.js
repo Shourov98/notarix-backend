@@ -8,7 +8,16 @@ const emailJobSchema = new mongoose.Schema(
     html: { type: String, default: "" },
     text: { type: String, default: "" },
     category: { type: String, default: "transactional" },
-    status: { type: String, default: "queued" },
+    status: {
+      type: String,
+      enum: ["queued", "sending", "sent", "failed"],
+      default: "queued",
+      index: true,
+    },
+    provider: { type: String, default: null },
+    attempts: { type: Number, default: 0 },
+    lastError: { type: String, default: null },
+    sentAt: { type: Date, default: null },
   },
   {
     timestamps: true,
