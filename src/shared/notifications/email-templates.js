@@ -154,15 +154,22 @@ export const buildInviteEmail = ({
   const body = `
     <p style="margin:0 0 16px 0;">${roleCopy.intro}</p>
     ${roleCopy.extra}
-    <p style="margin:0 0 8px 0;">Use the credentials below to sign in:</p>
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${BRAND.bg};border:1px solid ${BRAND.cardBorder};border-radius:8px;margin:0 0 16px 0;">
+    <p style="margin:0 0 8px 0;">Your account has been created with the email address below. Use these credentials to sign in:</p>
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${BRAND.bg};border:1px solid ${BRAND.cardBorder};border-radius:8px;margin:0 0 8px 0;">
       <tr>
         <td style="padding:14px 16px;font-size:14px;">
-          <div><strong>Email:</strong> ${escapeHtml(email)}</div>
-          <div style="margin-top:6px;"><strong>Temporary password:</strong> <code style="background:#ffffff;padding:2px 6px;border-radius:4px;border:1px solid ${BRAND.cardBorder};">${escapeHtml(temporaryPassword)}</code></div>
+          <div style="margin-bottom:10px;">
+            <div style="font-size:12px;color:${BRAND.muted};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Account email</div>
+            <div style="font-size:15px;font-weight:600;color:${BRAND.text};">${escapeHtml(email)}</div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:${BRAND.muted};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Temporary password</div>
+            <code style="display:inline-block;background:#ffffff;padding:4px 8px;border-radius:4px;border:1px solid ${BRAND.cardBorder};font-size:15px;font-weight:600;color:${BRAND.text};">${escapeHtml(temporaryPassword)}</code>
+          </div>
         </td>
       </tr>
     </table>
+    <p style="margin:0 0 16px 0;color:${BRAND.muted};font-size:13px;">Sign in with the email address <strong style="color:${BRAND.text};">${escapeHtml(email)}</strong> and the temporary password above.</p>
     <p style="margin:0;color:${BRAND.muted};font-size:14px;">For security, please sign in and reset your password on first login.</p>
   `;
 
@@ -180,9 +187,12 @@ export const buildInviteEmail = ({
     "",
     roleCopy.intro.replace(/<[^>]+>/g, ""),
     "",
-    "Sign-in credentials:",
-    `  Email: ${email}`,
-    `  Temporary password: ${temporaryPassword}`,
+    "Your account has been created. Use these credentials to sign in:",
+    "",
+    `  Account email:        ${email}`,
+    `  Temporary password:   ${temporaryPassword}`,
+    "",
+    `Sign in with the email address ${email} and the temporary password above.`,
     "",
     "For security, please sign in and reset your password on first login.",
     ctaUrl ? `Sign in: ${ctaUrl}` : "",
