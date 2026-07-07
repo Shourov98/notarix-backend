@@ -299,27 +299,64 @@ const assertVerifiedOrderDocuments = (res, order, message) => {
   return false;
 };
 
-const serializeNotaryAssignment = (order) => ({
-  id: `#${order.id}`,
-  rawId: order.id,
-  route: buildNotaryOrderRoute(order),
-  orderType: order.isRon ? "RON" : "In-Person",
-  title: order.clientCompany || order.clientName,
-  borrower: order.signerName,
-  location: order.isRon
-    ? "Remote Online"
-    : [
-        order.propertyAddress?.city,
-        order.propertyAddress?.state,
-        order.propertyAddress?.zip,
-      ]
-        .filter(Boolean)
-        .join(", "),
-  date: `${order.signingDate} ${order.signingTime}`.trim(),
-  fee: `$${Number(order.notaryOfferAmount ?? order.feeAmount ?? 0).toFixed(2)}`,
-  status: order.status,
-  workflowStatus: order.status,
-});
+const serializeNotaryAssignment = (order) => {
+  const orderDocuments = (order.documents || []).map((document) => ({
+    id: document.id,
+    name: document.name,
+    title: document.name,
+    status: document.status || "Pending",
+    reviewNote: document.reviewNote || "",
+    url: document.file
+      ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
+      : null,
+    downloadUrl: document.file
+      ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=download`
+      : null,
+    mimeType: document.mimeType || null,
+    size: document.size || null,
+    uploadedAt: document.uploadedAt || null,
+    uploadedBy: "Client",
+  }));
+  const completedDocuments = (order.completedDocuments || []).map((document) => ({
+    id: document.id,
+    name: document.name,
+    title: document.name,
+    status: "Verified",
+    url: document.file
+      ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
+      : null,
+    downloadUrl: document.file
+      ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=download`
+      : null,
+    mimeType: document.mimeType || null,
+    size: document.size || null,
+    uploadedAt: document.uploadedAt || null,
+    uploadedBy: "Notary",
+  }));
+
+  return {
+    id: `#${order.id}`,
+    rawId: order.id,
+    route: buildNotaryOrderRoute(order),
+    orderType: order.isRon ? "RON" : "In-Person",
+    title: order.clientCompany || order.clientName,
+    borrower: order.signerName,
+    location: order.isRon
+      ? "Remote Online"
+      : [
+          order.propertyAddress?.city,
+          order.propertyAddress?.state,
+          order.propertyAddress?.zip,
+        ]
+          .filter(Boolean)
+          .join(", "),
+    date: `${order.signingDate} ${order.signingTime}`.trim(),
+    fee: `$${Number(order.notaryOfferAmount ?? order.feeAmount ?? 0).toFixed(2)}`,
+    status: order.status,
+    workflowStatus: order.status,
+    documents: [...orderDocuments, ...completedDocuments],
+  };
+};
 
 const serializeNotaryAssignmentDetail = (order) => {
   const originalDocuments = (order.documents || []).map((document) => ({
