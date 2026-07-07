@@ -13,6 +13,7 @@ import {
 } from "../../shared/http/pagination.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { queueEmail } from "../../shared/notifications/email.service.js";
+import { buildInviteEmail } from "../../shared/notifications/email-templates.js";
 import {
   buildMaskedBankInfo,
   decryptBankInfo,
@@ -403,23 +404,20 @@ usersRouter.post(
 
     await UserModel.create(newUser);
 
+    const invite = buildInviteEmail({
+      role: "Client",
+      name,
+      email,
+      temporaryPassword,
+      loginUrl: `${process.env.CLIENT_APP_URL || "https://notarix-site.vercel.app"}/login`,
+      extra: { company },
+    });
     await queueEmail({
       to: email,
-      subject: "Your Notarix client account is ready",
-      text: [
-        `Hello ${name},`,
-        "",
-        "Your Notarix client account has been created.",
-        `Temporary password: ${temporaryPassword}`,
-        "Please sign in and reset your password on first login.",
-      ].join("\n"),
-      html: `
-        <p>Hello ${name},</p>
-        <p>Your Notarix client account has been created.</p>
-        <p><strong>Temporary password:</strong> ${temporaryPassword}</p>
-        <p>Please sign in and reset your password on first login.</p>
-      `,
-      category: "client-invite",
+      subject: invite.subject,
+      text: invite.text,
+      html: invite.html,
+      category: invite.category,
     });
     logProvisionedCredentials({
       role: "Client",
@@ -503,23 +501,20 @@ usersRouter.post(
 
     await UserModel.create(newUser);
 
+    const invite = buildInviteEmail({
+      role: "Notary",
+      name,
+      email,
+      temporaryPassword,
+      loginUrl: `${process.env.CLIENT_APP_URL || "https://notarix-site.vercel.app"}/login`,
+      extra: { ronEligible: newUser.ronEligible },
+    });
     await queueEmail({
       to: email,
-      subject: "Your Notarix notary account is ready",
-      text: [
-        `Hello ${name},`,
-        "",
-        "Your Notarix notary account has been created.",
-        `Temporary password: ${temporaryPassword}`,
-        "Please sign in and reset your password on first login.",
-      ].join("\n"),
-      html: `
-        <p>Hello ${name},</p>
-        <p>Your Notarix notary account has been created.</p>
-        <p><strong>Temporary password:</strong> ${temporaryPassword}</p>
-        <p>Please sign in and reset your password on first login.</p>
-      `,
-      category: "notary-invite",
+      subject: invite.subject,
+      text: invite.text,
+      html: invite.html,
+      category: invite.category,
     });
     logProvisionedCredentials({
       role: "Notary",
@@ -611,6 +606,25 @@ usersRouter.post(
       role: req.body.role,
       email,
       temporaryPassword,
+    });
+
+    const invite = buildInviteEmail({
+      role: "Admin",
+      name: newAdmin.name,
+      email,
+      temporaryPassword,
+      loginUrl: `${process.env.ADMIN_APP_URL || "https://notarix-admin-dashboard-liart.vercel.app"}/sign-in`,
+      extra: {
+        adminRole: newAdmin.role,
+        permissions: newAdmin.permissions,
+      },
+    });
+    await queueEmail({
+      to: email,
+      subject: invite.subject,
+      text: invite.text,
+      html: invite.html,
+      category: invite.category,
     });
     await createAuditLog({
       action: "admin.created",
