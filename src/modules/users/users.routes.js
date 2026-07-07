@@ -198,6 +198,19 @@ const adminDocumentsListSchema = z.object({
   params: z.object({}).passthrough(),
 });
 
+/**
+ * Derive the parent user's verification state from its required documents.
+ *  - No documents at all → "Pending"
+ *  - Any document "Rejected" → "Rejected"
+ *  - All documents "Verified" → "Verified"
+ *  - Otherwise (some Pending/Missing/Mixed) → "Pending"
+ */
+const computeUserVerification = (documents = []) => {
+  if (!Array.isArray(documents) || documents.length === 0) return "Pending";
+  if (documents.some((doc) => doc?.status === "Rejected")) return "Rejected";
+  return documents.every((doc) => doc?.status === "Verified") ? "Verified" : "Pending";
+};
+
 const serializeUser = (user) => {
   const {
     passwordHash,
@@ -208,6 +221,7 @@ const serializeUser = (user) => {
 
   return {
     ...safeUser,
+    verification: computeUserVerification(user.requiredDocuments),
     avatar: user.avatar ? `/api/v1/files/users/${user.id}/avatar?mode=view` : null,
     requiredDocuments: (user.requiredDocuments || []).map((document) => ({
       ...document,
@@ -345,8 +359,13 @@ usersRouter.get("/admin/users", requireAdminAuth, validate(adminUsersListSchema)
     UserModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize).lean(),
   ]);
 
+  const items = filtered.map((user) => ({
+    ...user,
+    verification: computeUserVerification(user.requiredDocuments),
+  }));
+
   return ok(res, {
-    items: filtered,
+    items,
     pagination: buildPaginationMeta({ page, pageSize, totalItems }),
   });
 });
@@ -1023,7 +1042,12 @@ usersRouter.post(
 
     const updated = await UserModel.findOneAndUpdate(
       { id: req.params.id },
-      { $set: { requiredDocuments: existingDocuments } },
+      {
+        $set: {
+          requiredDocuments: existingDocuments,
+          verification: computeUserVerification(existingDocuments),
+        },
+      },
       { new: true }
     ).lean();
 
@@ -1081,9 +1105,16 @@ usersRouter.patch(
       document.size = null;
     }
 
+    const nextVerification = computeUserVerification(nextDocuments);
+
     const updated = await UserModel.findOneAndUpdate(
       { id: req.params.id },
-      { $set: { requiredDocuments: nextDocuments } },
+      {
+        $set: {
+          requiredDocuments: nextDocuments,
+          verification: nextVerification,
+        },
+      },
       { new: true }
     ).lean();
 
