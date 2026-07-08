@@ -216,34 +216,44 @@ const serializeAdminOrderDetail = (order) => ({
   },
   specialInstructions: order.specialInstructions || "",
   adminReviewReason: order.adminReviewReason || "",
-  documents: (order.documents || []).map((document) => ({
-    id: document.id,
-    name: document.name,
-    status: document.status || "Pending",
-    reviewNote: document.reviewNote || "",
-    url: document.file
+  documents: (order.documents || []).map((document) => {
+    const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
+    const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
-      : null,
-    downloadUrl: document.file
+      : null;
+    const fallbackDownload = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=download`
-      : null,
-    mimeType: document.mimeType || null,
-    size: document.size || null,
-    uploadedAt: document.uploadedAt || null,
-  })),
-  completedDocuments: (order.completedDocuments || []).map((document) => ({
-    id: document.id,
-    name: document.name,
-    url: document.file
+      : null;
+    return {
+      id: document.id,
+      name: document.name,
+      status: document.status || "Pending",
+      reviewNote: document.reviewNote || "",
+      url: isHostedOnCloudinary ? document.url : fallbackView,
+      downloadUrl: isHostedOnCloudinary ? document.url : fallbackDownload,
+      mimeType: document.mimeType || null,
+      size: document.size || null,
+      uploadedAt: document.uploadedAt || null,
+    };
+  }),
+  completedDocuments: (order.completedDocuments || []).map((document) => {
+    const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
+    const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
-      : null,
-    downloadUrl: document.file
+      : null;
+    const fallbackDownload = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=download`
-      : null,
-    mimeType: document.mimeType || null,
-    size: document.size || null,
-    uploadedAt: document.uploadedAt || null,
-  })),
+      : null;
+    return {
+      id: document.id,
+      name: document.name,
+      url: isHostedOnCloudinary ? document.url : fallbackView,
+      downloadUrl: isHostedOnCloudinary ? document.url : fallbackDownload,
+      mimeType: document.mimeType || null,
+      size: document.size || null,
+      uploadedAt: document.uploadedAt || null,
+    };
+  }),
   timeline: buildTimeline(order),
 });
 
@@ -300,39 +310,49 @@ const assertVerifiedOrderDocuments = (res, order, message) => {
 };
 
 const serializeNotaryAssignment = (order) => {
-  const orderDocuments = (order.documents || []).map((document) => ({
-    id: document.id,
-    name: document.name,
-    title: document.name,
-    status: document.status || "Pending",
-    reviewNote: document.reviewNote || "",
-    url: document.file
+  const orderDocuments = (order.documents || []).map((document) => {
+    const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
+    const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
-      : null,
-    downloadUrl: document.file
+      : null;
+    const fallbackDownload = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=download`
-      : null,
-    mimeType: document.mimeType || null,
-    size: document.size || null,
-    uploadedAt: document.uploadedAt || null,
-    uploadedBy: "Client",
-  }));
-  const completedDocuments = (order.completedDocuments || []).map((document) => ({
-    id: document.id,
-    name: document.name,
-    title: document.name,
-    status: "Verified",
-    url: document.file
+      : null;
+    return {
+      id: document.id,
+      name: document.name,
+      title: document.name,
+      status: document.status || "Pending",
+      reviewNote: document.reviewNote || "",
+      url: isHostedOnCloudinary ? document.url : fallbackView,
+      downloadUrl: isHostedOnCloudinary ? document.url : fallbackDownload,
+      mimeType: document.mimeType || null,
+      size: document.size || null,
+      uploadedAt: document.uploadedAt || null,
+      uploadedBy: "Client",
+    };
+  });
+  const completedDocuments = (order.completedDocuments || []).map((document) => {
+    const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
+    const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
-      : null,
-    downloadUrl: document.file
+      : null;
+    const fallbackDownload = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=download`
-      : null,
-    mimeType: document.mimeType || null,
-    size: document.size || null,
-    uploadedAt: document.uploadedAt || null,
-    uploadedBy: "Notary",
-  }));
+      : null;
+    return {
+      id: document.id,
+      name: document.name,
+      title: document.name,
+      status: "Verified",
+      url: isHostedOnCloudinary ? document.url : fallbackView,
+      downloadUrl: isHostedOnCloudinary ? document.url : fallbackDownload,
+      mimeType: document.mimeType || null,
+      size: document.size || null,
+      uploadedAt: document.uploadedAt || null,
+      uploadedBy: "Notary",
+    };
+  });
 
   return {
     id: `#${order.id}`,
@@ -359,35 +379,45 @@ const serializeNotaryAssignment = (order) => {
 };
 
 const serializeNotaryAssignmentDetail = (order) => {
-  const originalDocuments = (order.documents || []).map((document) => ({
-    id: document.id,
-    name: document.name,
-    status: document.status || "Pending",
-    reviewNote: document.reviewNote || "",
-    url: document.file
+  const originalDocuments = (order.documents || []).map((document) => {
+    const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
+    const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
-      : null,
-    downloadUrl: document.file
+      : null;
+    const fallbackDownload = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=download`
-      : null,
-    mimeType: document.mimeType || null,
-    size: document.size || null,
-    uploadedAt: document.uploadedAt || null,
-  }));
+      : null;
+    return {
+      id: document.id,
+      name: document.name,
+      status: document.status || "Pending",
+      reviewNote: document.reviewNote || "",
+      url: isHostedOnCloudinary ? document.url : fallbackView,
+      downloadUrl: isHostedOnCloudinary ? document.url : fallbackDownload,
+      mimeType: document.mimeType || null,
+      size: document.size || null,
+      uploadedAt: document.uploadedAt || null,
+    };
+  });
 
-  const completedDocuments = (order.completedDocuments || []).map((document) => ({
-    id: document.id,
-    name: document.name,
-    url: document.file
+  const completedDocuments = (order.completedDocuments || []).map((document) => {
+    const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
+    const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
-      : null,
-    downloadUrl: document.file
+      : null;
+    const fallbackDownload = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=download`
-      : null,
-    mimeType: document.mimeType || null,
-    size: document.size || null,
-    uploadedAt: document.uploadedAt || null,
-  }));
+      : null;
+    return {
+      id: document.id,
+      name: document.name,
+      url: isHostedOnCloudinary ? document.url : fallbackView,
+      downloadUrl: isHostedOnCloudinary ? document.url : fallbackDownload,
+      mimeType: document.mimeType || null,
+      size: document.size || null,
+      uploadedAt: document.uploadedAt || null,
+    };
+  });
 
   const documentVerification = {
     total: originalDocuments.length,
@@ -1638,19 +1668,24 @@ ordersRouter.post(
 
     return ok(
       res,
-      (updated.completedDocuments || []).map((document) => ({
-        id: document.id,
-        name: document.name,
-        url: document.file
+      (updated.completedDocuments || []).map((document) => {
+        const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
+        const fallbackView = document.file
           ? `/api/v1/files/orders/${updated.id}/completed-documents/${document.id}?mode=view`
-          : null,
-        downloadUrl: document.file
+          : null;
+        const fallbackDownload = document.file
           ? `/api/v1/files/orders/${updated.id}/completed-documents/${document.id}?mode=download`
-          : null,
-        mimeType: document.mimeType || null,
-        size: document.size || null,
-        uploadedAt: document.uploadedAt || null,
-      })),
+          : null;
+        return {
+          id: document.id,
+          name: document.name,
+          url: isHostedOnCloudinary ? document.url : fallbackView,
+          downloadUrl: isHostedOnCloudinary ? document.url : fallbackDownload,
+          mimeType: document.mimeType || null,
+          size: document.size || null,
+          uploadedAt: document.uploadedAt || null,
+        };
+      }),
       "Completed documents uploaded successfully.",
       201
     );
@@ -1702,21 +1737,26 @@ ordersRouter.post(
 
     return ok(
       res,
-      (updated.documents || []).map((document) => ({
-        id: document.id,
-        name: document.name,
-        status: document.status || "Pending",
-        reviewNote: document.reviewNote || "",
-        url: document.file
+      (updated.documents || []).map((document) => {
+        const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
+        const fallbackView = document.file
           ? `/api/v1/files/orders/${updated.id}/documents/${document.id}?mode=view`
-          : null,
-        downloadUrl: document.file
+          : null;
+        const fallbackDownload = document.file
           ? `/api/v1/files/orders/${updated.id}/documents/${document.id}?mode=download`
-          : null,
-        mimeType: document.mimeType || null,
-        size: document.size || null,
-        uploadedAt: document.uploadedAt || null,
-      })),
+          : null;
+        return {
+          id: document.id,
+          name: document.name,
+          status: document.status || "Pending",
+          reviewNote: document.reviewNote || "",
+          url: isHostedOnCloudinary ? document.url : fallbackView,
+          downloadUrl: isHostedOnCloudinary ? document.url : fallbackDownload,
+          mimeType: document.mimeType || null,
+          size: document.size || null,
+          uploadedAt: document.uploadedAt || null,
+        };
+      }),
       "Order documents uploaded successfully.",
       201
     );

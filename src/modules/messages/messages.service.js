@@ -93,20 +93,26 @@ export const serializeMessage = (message, actorId) => ({
   senderRole: message.senderRole,
   senderName: message.senderName,
   body: message.body || "",
-  attachments: (message.attachments || []).map((attachment) => ({
-    id: attachment.id,
-    name: attachment.name,
-    url: attachment.file
+  attachments: (message.attachments || []).map((attachment) => {
+    const isHostedOnCloudinary = typeof attachment.url === "string" && attachment.url.startsWith("http");
+    const fallbackView = attachment.file
       ? `/api/v1/files/conversations/${message.conversationId}/attachments/${attachment.id}?mode=view`
-      : null,
-    downloadUrl: attachment.file
+      : null;
+    const fallbackDownload = attachment.file
       ? `/api/v1/files/conversations/${message.conversationId}/attachments/${attachment.id}?mode=download`
-      : null,
-    mimeType: attachment.mimeType || null,
-    size: attachment.size || null,
-    kind: attachment.kind || "file",
-    uploadedAt: attachment.uploadedAt || null,
-  })),
+      : null;
+
+    return {
+      id: attachment.id,
+      name: attachment.name,
+      url: isHostedOnCloudinary ? attachment.url : fallbackView,
+      downloadUrl: isHostedOnCloudinary ? attachment.url : fallbackDownload,
+      mimeType: attachment.mimeType || null,
+      size: attachment.size || null,
+      kind: attachment.kind || "file",
+      uploadedAt: attachment.uploadedAt || null,
+    };
+  }),
   createdAt: message.createdAt,
   isOwnMessage: message.senderId === actorId,
   isRead: (message.readBy || []).some((entry) => entry.actorId === actorId),
