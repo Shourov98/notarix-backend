@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { ConversationModel } from "./conversation.model.js";
 import { MessageModel } from "./message.model.js";
+import { normalizeCloudinaryUrl } from "../../shared/storage/cloudinary.js";
 
 const toParticipant = (actor) => ({
   actorId: actor.id,
@@ -95,6 +96,7 @@ export const serializeMessage = (message, actorId) => ({
   body: message.body || "",
   attachments: (message.attachments || []).map((attachment) => {
     const isHostedOnCloudinary = typeof attachment.url === "string" && attachment.url.startsWith("http");
+    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(attachment.url) : null;
     const fallbackView = attachment.file
       ? `/api/v1/files/conversations/${message.conversationId}/attachments/${attachment.id}?mode=view`
       : null;
@@ -105,8 +107,8 @@ export const serializeMessage = (message, actorId) => ({
     return {
       id: attachment.id,
       name: attachment.name,
-      url: isHostedOnCloudinary ? attachment.url : fallbackView,
-      downloadUrl: isHostedOnCloudinary ? attachment.url : fallbackDownload,
+      url: isHostedOnCloudinary ? cloudinaryUrl : fallbackView,
+      downloadUrl: isHostedOnCloudinary ? cloudinaryUrl : fallbackDownload,
       mimeType: attachment.mimeType || null,
       size: attachment.size || null,
       kind: attachment.kind || "file",
