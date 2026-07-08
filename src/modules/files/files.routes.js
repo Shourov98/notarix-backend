@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 import { Router } from "express";
 import { z } from "zod";
 import { config } from "../../config.js";
+import { signCloudinaryDeliveryUrl } from "../../shared/storage/cloudinary.js";
 import { requireAuthenticatedActor } from "../../shared/http/auth-middleware.js";
 import { fail } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
@@ -58,7 +59,13 @@ const paymentProofSchema = z.object({
 const isAdmin = (actor) => actor?.type === "admin";
 
 const sendRemoteFile = async (res, file, mode = "view") => {
-  const response = await fetch(file.url);
+  // Sign Cloudinary URLs on-the-fly so the backend can proxy assets even when
+  // the account is in an "untrusted" state that blocks unsigned delivery.
+  const remoteUrl = typeof file.url === "string" && file.url.startsWith("http")
+    ? signCloudinaryDeliveryUrl(file.url, { ttlSeconds: 300 })
+    : file.url;
+
+  const response = await fetch(remoteUrl);
   if (!response.ok || !response.body) {
     return fail(res, 404, "FILE_NOT_FOUND", "Remote file is not available.");
   }

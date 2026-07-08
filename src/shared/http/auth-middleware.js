@@ -5,7 +5,12 @@ import { fail } from "./respond.js";
 
 const getAuthPayload = (req) => {
   const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const headerToken = header.startsWith("Bearer ") ? header.slice(7) : "";
+  // For asset URLs that are loaded by the browser via <img>/<iframe>, the
+  // Authorization header isn't attached. Accept the token via the `token`
+  // query string as an escape hatch for those proxy endpoints.
+  const queryToken = typeof req.query?.token === "string" ? req.query.token : "";
+  const token = headerToken || queryToken;
   return verifyToken(token);
 };
 

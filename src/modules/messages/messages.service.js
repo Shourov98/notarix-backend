@@ -95,20 +95,28 @@ export const serializeMessage = (message, actorId) => ({
   senderName: message.senderName,
   body: message.body || "",
   attachments: (message.attachments || []).map((attachment) => {
-    const isHostedOnCloudinary = typeof attachment.url === "string" && attachment.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(attachment.url, attachment.mimeType) : null;
-    const fallbackView = attachment.file
+    // Always route through the backend proxy for Cloudinary assets. The
+    // backend signs the delivery URL on-the-fly so the asset is reachable
+    // even when the Cloudinary account is "marked as untrusted" and blocks
+    // browser-side delivery.
+    const proxyView = attachment.file
       ? `/api/v1/files/conversations/${message.conversationId}/attachments/${attachment.id}?mode=view`
       : null;
-    const fallbackDownload = attachment.file
+    const proxyDownload = attachment.file
       ? `/api/v1/files/conversations/${message.conversationId}/attachments/${attachment.id}?mode=download`
+      : null;
+    const isHostedOnCloudinary = typeof attachment.url === "string" && attachment.url.startsWith("http");
+    const directSignedUrl = isHostedOnCloudinary
+      ? normalizeCloudinaryUrl(attachment.url, attachment.mimeType, { sign: true })
       : null;
 
     return {
       id: attachment.id,
       name: attachment.name,
-      url: isHostedOnCloudinary ? cloudinaryUrl : fallbackView,
-      downloadUrl: isHostedOnCloudinary ? cloudinaryUrl : fallbackDownload,
+      // Prefer the backend proxy (always works). Fall back to a signed direct
+      // URL when the asset isn't proxy-able (no file metadata).
+      url: proxyView || directSignedUrl,
+      downloadUrl: proxyDownload || directSignedUrl,
       mimeType: attachment.mimeType || null,
       size: attachment.size || null,
       kind: attachment.kind || "file",

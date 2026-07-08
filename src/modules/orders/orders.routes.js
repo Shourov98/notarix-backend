@@ -221,7 +221,9 @@ const serializeAdminOrderDetail = (order) => ({
   adminReviewReason: order.adminReviewReason || "",
   documents: (order.documents || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
+    const cloudinaryUrl = isHostedOnCloudinary
+      ? normalizeCloudinaryUrl(document.url, document.mimeType, { sign: true })
+      : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
       : null;
@@ -233,8 +235,8 @@ const serializeAdminOrderDetail = (order) => ({
       name: document.name,
       status: document.status || "Pending",
       reviewNote: document.reviewNote || "",
-      url: isHostedOnCloudinary ? cloudinaryUrl : fallbackView,
-      downloadUrl: isHostedOnCloudinary ? cloudinaryUrl : fallbackDownload,
+      url: fallbackView || cloudinaryUrl,
+      downloadUrl: fallbackDownload || cloudinaryUrl,
       mimeType: document.mimeType || null,
       size: document.size || null,
       uploadedAt: document.uploadedAt || null,
@@ -242,7 +244,9 @@ const serializeAdminOrderDetail = (order) => ({
   }),
   completedDocuments: (order.completedDocuments || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
+    const cloudinaryUrl = isHostedOnCloudinary
+      ? normalizeCloudinaryUrl(document.url, document.mimeType, { sign: true })
+      : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
       : null;
@@ -252,8 +256,8 @@ const serializeAdminOrderDetail = (order) => ({
     return {
       id: document.id,
       name: document.name,
-      url: isHostedOnCloudinary ? cloudinaryUrl : fallbackView,
-      downloadUrl: isHostedOnCloudinary ? cloudinaryUrl : fallbackDownload,
+      url: fallbackView || cloudinaryUrl,
+      downloadUrl: fallbackDownload || cloudinaryUrl,
       mimeType: document.mimeType || null,
       size: document.size || null,
       uploadedAt: document.uploadedAt || null,
@@ -317,7 +321,9 @@ const assertVerifiedOrderDocuments = (res, order, message) => {
 const serializeNotaryAssignment = (order) => {
   const orderDocuments = (order.documents || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
+    const cloudinaryUrl = isHostedOnCloudinary
+      ? normalizeCloudinaryUrl(document.url, document.mimeType, { sign: true })
+      : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
       : null;
@@ -330,8 +336,8 @@ const serializeNotaryAssignment = (order) => {
       title: document.name,
       status: document.status || "Pending",
       reviewNote: document.reviewNote || "",
-      url: isHostedOnCloudinary ? cloudinaryUrl : fallbackView,
-      downloadUrl: isHostedOnCloudinary ? cloudinaryUrl : fallbackDownload,
+      url: fallbackView || cloudinaryUrl,
+      downloadUrl: fallbackDownload || cloudinaryUrl,
       mimeType: document.mimeType || null,
       size: document.size || null,
       uploadedAt: document.uploadedAt || null,
@@ -340,7 +346,9 @@ const serializeNotaryAssignment = (order) => {
   });
   const completedDocuments = (order.completedDocuments || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
+    const cloudinaryUrl = isHostedOnCloudinary
+      ? normalizeCloudinaryUrl(document.url, document.mimeType, { sign: true })
+      : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
       : null;
@@ -352,8 +360,8 @@ const serializeNotaryAssignment = (order) => {
       name: document.name,
       title: document.name,
       status: "Verified",
-      url: isHostedOnCloudinary ? cloudinaryUrl : fallbackView,
-      downloadUrl: isHostedOnCloudinary ? cloudinaryUrl : fallbackDownload,
+      url: fallbackView || cloudinaryUrl,
+      downloadUrl: fallbackDownload || cloudinaryUrl,
       mimeType: document.mimeType || null,
       size: document.size || null,
       uploadedAt: document.uploadedAt || null,
@@ -388,7 +396,9 @@ const serializeNotaryAssignment = (order) => {
 const serializeNotaryAssignmentDetail = (order) => {
   const originalDocuments = (order.documents || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
+    const cloudinaryUrl = isHostedOnCloudinary
+      ? normalizeCloudinaryUrl(document.url, document.mimeType, { sign: true })
+      : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
       : null;
@@ -400,8 +410,8 @@ const serializeNotaryAssignmentDetail = (order) => {
       name: document.name,
       status: document.status || "Pending",
       reviewNote: document.reviewNote || "",
-      url: isHostedOnCloudinary ? cloudinaryUrl : fallbackView,
-      downloadUrl: isHostedOnCloudinary ? cloudinaryUrl : fallbackDownload,
+      url: fallbackView || cloudinaryUrl,
+      downloadUrl: fallbackDownload || cloudinaryUrl,
       mimeType: document.mimeType || null,
       size: document.size || null,
       uploadedAt: document.uploadedAt || null,
@@ -410,7 +420,9 @@ const serializeNotaryAssignmentDetail = (order) => {
 
   const completedDocuments = (order.completedDocuments || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
+    const cloudinaryUrl = isHostedOnCloudinary
+      ? normalizeCloudinaryUrl(document.url, document.mimeType, { sign: true })
+      : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
       : null;
@@ -420,8 +432,8 @@ const serializeNotaryAssignmentDetail = (order) => {
     return {
       id: document.id,
       name: document.name,
-      url: isHostedOnCloudinary ? cloudinaryUrl : fallbackView,
-      downloadUrl: isHostedOnCloudinary ? cloudinaryUrl : fallbackDownload,
+      url: fallbackView || cloudinaryUrl,
+      downloadUrl: fallbackDownload || cloudinaryUrl,
       mimeType: document.mimeType || null,
       size: document.size || null,
       uploadedAt: document.uploadedAt || null,
@@ -1679,7 +1691,9 @@ ordersRouter.post(
       res,
       (updated.completedDocuments || []).map((document) => {
         const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-        const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
+        const cloudinaryUrl = isHostedOnCloudinary
+      ? normalizeCloudinaryUrl(document.url, document.mimeType, { sign: true })
+      : null;
         const fallbackView = document.file
           ? `/api/v1/files/orders/${updated.id}/completed-documents/${document.id}?mode=view`
           : null;
@@ -1689,8 +1703,8 @@ ordersRouter.post(
         return {
           id: document.id,
           name: document.name,
-          url: isHostedOnCloudinary ? cloudinaryUrl : fallbackView,
-          downloadUrl: isHostedOnCloudinary ? cloudinaryUrl : fallbackDownload,
+          url: fallbackView || cloudinaryUrl,
+          downloadUrl: fallbackDownload || cloudinaryUrl,
           mimeType: document.mimeType || null,
           size: document.size || null,
           uploadedAt: document.uploadedAt || null,
@@ -1749,7 +1763,9 @@ ordersRouter.post(
       res,
       (updated.documents || []).map((document) => {
         const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-        const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
+        const cloudinaryUrl = isHostedOnCloudinary
+      ? normalizeCloudinaryUrl(document.url, document.mimeType, { sign: true })
+      : null;
         const fallbackView = document.file
           ? `/api/v1/files/orders/${updated.id}/documents/${document.id}?mode=view`
           : null;
@@ -1761,8 +1777,8 @@ ordersRouter.post(
           name: document.name,
           status: document.status || "Pending",
           reviewNote: document.reviewNote || "",
-          url: isHostedOnCloudinary ? cloudinaryUrl : fallbackView,
-          downloadUrl: isHostedOnCloudinary ? cloudinaryUrl : fallbackDownload,
+          url: fallbackView || cloudinaryUrl,
+          downloadUrl: fallbackDownload || cloudinaryUrl,
           mimeType: document.mimeType || null,
           size: document.size || null,
           uploadedAt: document.uploadedAt || null,
@@ -1770,6 +1786,101 @@ ordersRouter.post(
       }),
       "Order documents uploaded successfully.",
       201
+    );
+  }
+);
+
+// Replace an existing document on a client order. Useful for re-uploading a
+// document whose original Cloudinary asset was lost or made private.
+ordersRouter.put(
+  "/site/orders/:id/documents/:documentId",
+  requireAuthenticatedActor,
+  upload.single("document"),
+  async (req, res) => {
+    if (req.actor.type !== "user" || req.actor.role !== "Client") {
+      return fail(res, 403, "FORBIDDEN", "Only client users can replace order documents.");
+    }
+    if (!req.file) {
+      return fail(res, 400, "FILE_REQUIRED", "No document file uploaded.");
+    }
+
+    const order = await OrderModel.findOne({
+      id: normalizeId(req.params.id),
+      clientUserId: req.actor.id,
+    }).lean();
+    if (!order) {
+      return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
+    }
+
+    const existing = (order.documents || []).find((item) => item.id === req.params.documentId);
+    if (!existing) {
+      return fail(res, 404, "DOCUMENT_NOT_FOUND", "Order document not found.");
+    }
+
+    const stored = await storeUploadedFile(req.file, {
+      folder: "notarix/orders/documents",
+    });
+
+    const updated = await OrderModel.findOneAndUpdate(
+      {
+        id: order.id,
+        "documents.id": req.params.documentId,
+      },
+      {
+        $set: {
+          "documents.$.name": req.file.originalname,
+          "documents.$.status": "Pending",
+          "documents.$.reviewNote": "",
+          "documents.$.provider": stored.provider,
+          "documents.$.file": stored.file,
+          "documents.$.url": stored.url,
+          "documents.$.mimeType": stored.mimeType,
+          "documents.$.size": stored.size,
+          "documents.$.uploadedAt": new Date(),
+        },
+      },
+      { new: true }
+    ).lean();
+
+    if (!updated) {
+      return fail(res, 500, "UPDATE_FAILED", "Unable to replace document.");
+    }
+
+    const replaced = (updated.documents || []).find(
+      (item) => item.id === req.params.documentId
+    );
+
+    if (!replaced) {
+      return fail(res, 500, "UPDATE_FAILED", "Document missing after replacement.");
+    }
+
+    const isHostedOnCloudinary =
+      typeof replaced.url === "string" && replaced.url.startsWith("http");
+    const cloudinaryUrl = isHostedOnCloudinary
+      ? normalizeCloudinaryUrl(replaced.url, replaced.mimeType, { sign: true })
+      : null;
+    const fallbackView = replaced.file
+      ? `/api/v1/files/orders/${updated.id}/documents/${replaced.id}?mode=view`
+      : null;
+    const fallbackDownload = replaced.file
+      ? `/api/v1/files/orders/${updated.id}/documents/${replaced.id}?mode=download`
+      : null;
+
+    return ok(
+      res,
+      {
+        id: replaced.id,
+        name: replaced.name,
+        status: replaced.status || "Pending",
+        reviewNote: replaced.reviewNote || "",
+        url: fallbackView || cloudinaryUrl,
+        downloadUrl: fallbackDownload || cloudinaryUrl,
+        mimeType: replaced.mimeType || null,
+        size: replaced.size || null,
+        uploadedAt: replaced.uploadedAt || null,
+      },
+      "Document replaced successfully.",
+      200
     );
   }
 );

@@ -57,6 +57,39 @@ const signUploadParams = (params) => {
     .digest("hex");
 };
 
+// Build a signed delivery URL that bypasses Cloudinary's "untrusted customer"
+// restriction for the original asset. This lets PDFs/documents be fetched by
+// the browser even when the Cloudinary account has access controls that block
+// unsigned delivery. The signature is short-lived (default 1h).
+export const signCloudinaryDeliveryUrl = (url, { ttlSeconds = 3600 } = {}) => {
+  if (typeof url !== "string" || !url.startsWith("http")) {
+    return url;
+  }
+  if (!isCloudinaryEnabled()) {
+    return url;
+  }
+
+  try {
+    const parsed = new URL(url);
+    const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
+
+    // Cloudinary's delivery signing requires the literal string
+    // "expires_at=<value>" to be signed, with the api_secret appended.
+    const signature = crypto
+      .createHash("sha1")
+      .update(`expires_at=${expiresAt}${config.cloudinaryApiSecret}`)
+      .digest("hex");
+
+    parsed.searchParams.set("expires_at", String(expiresAt));
+    parsed.searchParams.set("signature", signature);
+    parsed.searchParams.set("api_key", config.cloudinaryApiKey);
+
+    return parsed.toString();
+  } catch (error) {
+    return url;
+  }
+};
+
 const buildPublicId = (file) => {
   const safeName = String(file.originalname || "file")
     .replace(/\.[^.]+$/, "")
@@ -79,10 +112,13 @@ export const uploadToCloudinary = async (file, { folder, resourceType } = {}) =>
   const resolvedResourceType = resourceType || detectResourceType(file);
   const timestamp = Math.floor(Date.now() / 1000);
   const publicId = buildPublicId(file);
-  // `type: "upload"` forces Cloudinary to mark the asset as publicly deliverable
-  // via the unsigned secure_url. Without it Cloudinary may default to a private
-  // delivery type, in which case every fetch returns HTTP 401.
+  // `type: "upload"` marks the asset as a public upload (deliverable via the
+  // unsigned secure_url). `access_mode: "public"` ensures the asset itself is
+  // public, which is the same thing expressed as an asset-level setting.
+  // Together they bypass the "Customer is marked as untrusted" delivery block
+  // that Cloudinary applies to accounts in trial / unverified state.
   const params = {
+    access_mode: "public",
     folder,
     public_id: publicId,
     timestamp,
@@ -100,6 +136,7 @@ export const uploadToCloudinary = async (file, { folder, resourceType } = {}) =>
   formData.append("timestamp", String(timestamp));
   formData.append("signature", signature);
   formData.append("type", "upload");
+  formData.append("access_mode", "public");
   if (folder) {
     formData.append("folder", folder);
   }
@@ -152,7 +189,11 @@ export const storeUploadedFile = async (file, options = {}) => {
 //
 // Also strips a known "doubled-folder" bug from older rows where the public_id
 // contained the folder prefix twice in a row.
-export const normalizeCloudinaryUrl = (url, mimeType) => {
+//
+// When the second argument is true (default for documents), the returned URL is
+// also signed, which lets the browser fetch the asset even when the Cloudinary
+// account is "marked as untrusted" or the asset is otherwise access-controlled.
+export const normalizeCloudinaryUrl = (url, mimeType, { sign = false, ttlSeconds = 3600 } = {}) => {
   if (typeof url !== "string" || !url.startsWith("http")) {
     return url;
   }
@@ -169,12 +210,12 @@ export const normalizeCloudinaryUrl = (url, mimeType) => {
     const segments = parsed.pathname.split("/").filter(Boolean);
     const uploadIndex = segments.findIndex((segment) => segment === "upload");
     if (uploadIndex === -1) {
-      return parsed.toString();
+      return sign ? signCloudinaryDeliveryUrl(parsed.toString(), { ttlSeconds }) : parsed.toString();
     }
 
     const publicIdSegments = segments.slice(uploadIndex + 2);
     if (publicIdSegments.length < 2) {
-      return parsed.toString();
+      return sign ? signCloudinaryDeliveryUrl(parsed.toString(), { ttlSeconds }) : parsed.toString();
     }
 
     // Detect and collapse a doubled-folder prefix in the public_id
@@ -196,11 +237,11 @@ export const normalizeCloudinaryUrl = (url, mimeType) => {
           ...collapsed,
         ];
         parsed.pathname = `/${nextSegments.join("/")}`;
-        return parsed.toString();
+        return sign ? signCloudinaryDeliveryUrl(parsed.toString(), { ttlSeconds }) : parsed.toString();
       }
     }
 
-    return parsed.toString();
+    return sign ? signCloudinaryDeliveryUrl(parsed.toString(), { ttlSeconds }) : parsed.toString();
   } catch (error) {
     return url;
   }
