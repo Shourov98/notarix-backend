@@ -106,48 +106,9 @@ export const storeUploadedFile = async (file, options = {}) => {
   };
 };
 
-export const normalizeCloudinaryUrl = (url) => {
-  if (typeof url !== "string" || !url.startsWith("http")) {
-    return url;
-  }
-
-  try {
-    const parsed = new URL(url);
-    const segments = parsed.pathname.split("/").filter(Boolean);
-
-    // Path layout: /<resource_type>/upload/v<version>/<public_id...>
-    const uploadIndex = segments.findIndex((segment) => segment === "upload");
-    if (uploadIndex === -1) {
-      return url;
-    }
-
-    const publicIdSegments = segments.slice(uploadIndex + 2);
-    if (publicIdSegments.length < 2) {
-      return url;
-    }
-
-    // Detect the doubled-folder bug: the same prefix appears at the head of the
-    // public_id twice in a row (e.g. notarix/orders/documents/notarix/orders/documents/<file>).
-    // Find the smallest possible folder prefix where this happens and collapse to one copy.
-    for (let prefixLength = 1; prefixLength <= Math.floor(publicIdSegments.length / 2); prefixLength += 1) {
-      const prefix = publicIdSegments.slice(0, prefixLength).join("/");
-      const second = publicIdSegments.slice(prefixLength, prefixLength * 2);
-      if (second.length === prefixLength && second.join("/") === prefix) {
-        const collapsed = [
-          ...publicIdSegments.slice(0, prefixLength),
-          ...publicIdSegments.slice(prefixLength * 2),
-        ];
-        const nextSegments = [
-          ...segments.slice(0, uploadIndex + 2),
-          ...collapsed,
-        ];
-        parsed.pathname = `/${nextSegments.join("/")}`;
-        return parsed.toString();
-      }
-    }
-
-    return url;
-  } catch (error) {
-    return url;
-  }
-};
+// Kept for backwards compatibility with existing call sites; new uploads produce
+// clean URLs so no runtime normalization is needed. Historical uploads may have
+// been stored at "doubled" paths (e.g. folder/a/folder/a/file) but those URLs
+// must be preserved as-is because the asset genuinely lives at that path in
+// Cloudinary for legacy records.
+export const normalizeCloudinaryUrl = (url) => url;
