@@ -79,10 +79,14 @@ export const uploadToCloudinary = async (file, { folder, resourceType } = {}) =>
   const resolvedResourceType = resourceType || detectResourceType(file);
   const timestamp = Math.floor(Date.now() / 1000);
   const publicId = buildPublicId(file);
+  // `type: "upload"` forces Cloudinary to mark the asset as publicly deliverable
+  // via the unsigned secure_url. Without it Cloudinary may default to a private
+  // delivery type, in which case every fetch returns HTTP 401.
   const params = {
     folder,
     public_id: publicId,
     timestamp,
+    type: "upload",
   };
   const signature = signUploadParams(params);
 
@@ -95,6 +99,7 @@ export const uploadToCloudinary = async (file, { folder, resourceType } = {}) =>
   formData.append("api_key", config.cloudinaryApiKey);
   formData.append("timestamp", String(timestamp));
   formData.append("signature", signature);
+  formData.append("type", "upload");
   if (folder) {
     formData.append("folder", folder);
   }
