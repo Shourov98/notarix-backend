@@ -23,9 +23,60 @@ import { attachRequestContext } from "../shared/middleware/request-context.js";
 import { apiRateLimit } from "../shared/middleware/rate-limit.js";
 import { handleUploadErrors } from "../shared/storage/upload.js";
 
+const vercelPreviewRegex = /^https:\/\/[a-z0-9-]+(-[a-z0-9-]+)?\.vercel\.app$/i;
+const localhostRegex = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+
+const matchesWildcardPattern = (origin, pattern) => {
+  if (!pattern.includes("*")) return false;
+  const escaped = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, "[a-z0-9-]+");
+  return new RegExp(`^${escaped}$`, "i").test(origin);
+};
+
+const matchesVercelPattern = (origin, base) => {
+  if (!base.startsWith("https://") || !base.endsWith(".vercel.app")) {
+    return false;
+  }
+  const trimmed = base.replace(/^https:\/\//, "").replace(/\.vercel\.app$/, "");
+  if (!trimmed) return false;
+  const regex = new RegExp(
+    `^https://${trimmed
+      .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/-/g, "[a-z0-9-]+")}(-git|-[a-z0-9-]+)?\\.vercel\\.app$`,
+    "i"
+  );
+  return regex.test(origin);
+};
+
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
-  return config.corsOrigins.includes(origin);
+  if (config.corsOrigins.includes(origin)) return true;
+
+  if (config.nodeEnv !== "production" && localhostRegex.test(origin)) {
+    return true;
+  }
+
+  if (vercelPreviewRegex.test(origin)) {
+    const adminBase = config.adminAppUrl || "";
+    const clientBase = config.clientAppUrl || "";
+    if (adminBase && matchesVercelPattern(origin, adminBase)) return true;
+    if (clientBase && matchesVercelPattern(origin, clientBase)) return true;
+
+    for (const pattern of config.corsOrigins) {
+      if (matchesWildcardPattern(origin, pattern)) return true;
+      if (matchesVercelPattern(origin, pattern)) return true;
+    }
+
+    const allowedProduction = config.corsOrigins.some((entry) =>
+      entry.endsWith(".vercel.app") || entry.includes("notarix")
+    );
+    if (allowedProduction) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 export const createApp = () => {
