@@ -96,7 +96,7 @@ export const serializeMessage = (message, actorId) => ({
   body: message.body || "",
   attachments: (message.attachments || []).map((attachment) => {
     const isHostedOnCloudinary = typeof attachment.url === "string" && attachment.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(attachment.url) : null;
+    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(attachment.url, attachment.mimeType) : null;
     const fallbackView = attachment.file
       ? `/api/v1/files/conversations/${message.conversationId}/attachments/${attachment.id}?mode=view`
       : null;

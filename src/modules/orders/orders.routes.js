@@ -221,7 +221,7 @@ const serializeAdminOrderDetail = (order) => ({
   adminReviewReason: order.adminReviewReason || "",
   documents: (order.documents || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url) : null;
+    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
       : null;
@@ -242,7 +242,7 @@ const serializeAdminOrderDetail = (order) => ({
   }),
   completedDocuments: (order.completedDocuments || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url) : null;
+    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
       : null;
@@ -317,7 +317,7 @@ const assertVerifiedOrderDocuments = (res, order, message) => {
 const serializeNotaryAssignment = (order) => {
   const orderDocuments = (order.documents || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url) : null;
+    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
       : null;
@@ -340,7 +340,7 @@ const serializeNotaryAssignment = (order) => {
   });
   const completedDocuments = (order.completedDocuments || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url) : null;
+    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
       : null;
@@ -388,7 +388,7 @@ const serializeNotaryAssignment = (order) => {
 const serializeNotaryAssignmentDetail = (order) => {
   const originalDocuments = (order.documents || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url) : null;
+    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/documents/${document.id}?mode=view`
       : null;
@@ -410,7 +410,7 @@ const serializeNotaryAssignmentDetail = (order) => {
 
   const completedDocuments = (order.completedDocuments || []).map((document) => {
     const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url) : null;
+    const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
     const fallbackView = document.file
       ? `/api/v1/files/orders/${order.id}/completed-documents/${document.id}?mode=view`
       : null;
@@ -1679,7 +1679,7 @@ ordersRouter.post(
       res,
       (updated.completedDocuments || []).map((document) => {
         const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-        const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url) : null;
+        const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
         const fallbackView = document.file
           ? `/api/v1/files/orders/${updated.id}/completed-documents/${document.id}?mode=view`
           : null;
@@ -1749,7 +1749,7 @@ ordersRouter.post(
       res,
       (updated.documents || []).map((document) => {
         const isHostedOnCloudinary = typeof document.url === "string" && document.url.startsWith("http");
-        const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url) : null;
+        const cloudinaryUrl = isHostedOnCloudinary ? normalizeCloudinaryUrl(document.url, document.mimeType) : null;
         const fallbackView = document.file
           ? `/api/v1/files/orders/${updated.id}/documents/${document.id}?mode=view`
           : null;

@@ -9,8 +9,40 @@ const isCloudinaryEnabled = () =>
   config.cloudinaryApiKey &&
   config.cloudinaryApiSecret;
 
-const toUploadUrl = () =>
-  `https://api.cloudinary.com/v1_1/${config.cloudinaryCloudName}/auto/upload`;
+const RAW_MIME_PREFIXES = ["application/pdf", "application/zip", "application/x-zip"];
+const RAW_MIME_EXACT = new Set([
+  "application/pdf",
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/x-7z-compressed",
+  "application/x-rar-compressed",
+  "application/x-tar",
+  "application/gzip",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+]);
+
+const isRawMime = (mimeType) => {
+  if (!mimeType) return false;
+  if (RAW_MIME_EXACT.has(mimeType)) return true;
+  return RAW_MIME_PREFIXES.some((prefix) => mimeType.startsWith(prefix));
+};
+
+const detectResourceType = (file) => {
+  const mime = file?.mimetype || "";
+  if (mime.startsWith("video/")) return "video";
+  if (isRawMime(mime)) return "raw";
+  return "image";
+};
+
+const toUploadUrl = (resourceType = "auto") =>
+  `https://api.cloudinary.com/v1_1/${config.cloudinaryCloudName}/${resourceType}/upload`;
 
 const signUploadParams = (params) => {
   const serialized = Object.entries(params)
@@ -35,7 +67,7 @@ const buildPublicId = (file) => {
   return `${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${safeName || "file"}`;
 };
 
-export const uploadToCloudinary = async (file, { folder } = {}) => {
+export const uploadToCloudinary = async (file, { folder, resourceType } = {}) => {
   if (!file?.buffer) {
     throw new Error("Upload buffer is missing.");
   }
@@ -44,6 +76,7 @@ export const uploadToCloudinary = async (file, { folder } = {}) => {
     throw new Error("Cloudinary storage is not configured.");
   }
 
+  const resolvedResourceType = resourceType || detectResourceType(file);
   const timestamp = Math.floor(Date.now() / 1000);
   const publicId = buildPublicId(file);
   const params = {
@@ -67,7 +100,7 @@ export const uploadToCloudinary = async (file, { folder } = {}) => {
   }
   formData.append("public_id", publicId);
 
-  const response = await fetch(toUploadUrl(), {
+  const response = await fetch(toUploadUrl(resolvedResourceType), {
     method: "POST",
     body: formData,
   });
@@ -81,6 +114,7 @@ export const uploadToCloudinary = async (file, { folder } = {}) => {
     provider: "cloudinary",
     file: payload.public_id,
     url: payload.secure_url,
+    resourceType: payload.resource_type || resolvedResourceType,
     mimeType: file.mimetype || payload.resource_type || null,
     size: file.size || payload.bytes || null,
   };
@@ -106,9 +140,63 @@ export const storeUploadedFile = async (file, options = {}) => {
   };
 };
 
-// Kept for backwards compatibility with existing call sites; new uploads produce
-// clean URLs so no runtime normalization is needed. Historical uploads may have
-// been stored at "doubled" paths (e.g. folder/a/folder/a/file) but those URLs
-// must be preserved as-is because the asset genuinely lives at that path in
-// Cloudinary for legacy records.
-export const normalizeCloudinaryUrl = (url) => url;
+// Transforms a stored Cloudinary URL so non-image files (PDFs, docs, archives)
+// are served via the `raw/upload` delivery URL. Legacy uploads used
+// `/image/upload/` for everything; Cloudinary then transcodes the response,
+// which breaks PDF viewing in the browser.
+//
+// Also strips a known "doubled-folder" bug from older rows where the public_id
+// contained the folder prefix twice in a row.
+export const normalizeCloudinaryUrl = (url, mimeType) => {
+  if (typeof url !== "string" || !url.startsWith("http")) {
+    return url;
+  }
+
+  try {
+    const parsed = new URL(url);
+
+    // Flip resource type from "image" to "raw" for non-image MIME types so the
+    // browser receives the original bytes instead of an image transcoding.
+    if (typeof mimeType === "string" && isRawMime(mimeType) && !parsed.pathname.includes("/raw/upload/")) {
+      parsed.pathname = parsed.pathname.replace(/\/image\/upload\//, "/raw/upload/");
+    }
+
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const uploadIndex = segments.findIndex((segment) => segment === "upload");
+    if (uploadIndex === -1) {
+      return parsed.toString();
+    }
+
+    const publicIdSegments = segments.slice(uploadIndex + 2);
+    if (publicIdSegments.length < 2) {
+      return parsed.toString();
+    }
+
+    // Detect and collapse a doubled-folder prefix in the public_id
+    // (e.g. folder/a/folder/a/<file> -> folder/a/<file>).
+    for (
+      let prefixLength = 1;
+      prefixLength <= Math.floor(publicIdSegments.length / 2);
+      prefixLength += 1
+    ) {
+      const prefix = publicIdSegments.slice(0, prefixLength).join("/");
+      const second = publicIdSegments.slice(prefixLength, prefixLength * 2);
+      if (second.length === prefixLength && second.join("/") === prefix) {
+        const collapsed = [
+          ...publicIdSegments.slice(0, prefixLength),
+          ...publicIdSegments.slice(prefixLength * 2),
+        ];
+        const nextSegments = [
+          ...segments.slice(0, uploadIndex + 2),
+          ...collapsed,
+        ];
+        parsed.pathname = `/${nextSegments.join("/")}`;
+        return parsed.toString();
+      }
+    }
+
+    return parsed.toString();
+  } catch (error) {
+    return url;
+  }
+};
