@@ -1135,6 +1135,101 @@ ordersRouter.get(
   }
 );
 
+// Create an order on behalf of a client (admin-authenticated).
+// `clientUserId` identifies the client; everything else matches the
+// `/site/orders` shape so the form on the admin dashboard mirrors the
+// notarix-site client order form.
+const adminOrderCreateSchema = z.object({
+  body: orderCreateSchema.shape.body.extend({
+    clientUserId: z.string().min(1),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+ordersRouter.post(
+  "/admin/orders",
+  requireAdminAuth,
+  validate(adminOrderCreateSchema),
+  async (req, res) => {
+    const clientUserId = String(req.body.clientUserId || "").trim();
+    const client = await UserModel.findOne({ id: clientUserId, role: "Client" }).lean();
+    if (!client) {
+      return fail(res, 404, "CLIENT_NOT_FOUND", "Client not found.");
+    }
+
+    const signerName = `${req.body.signerFirstName} ${req.body.signerLastName}`.trim();
+    const orderId = `${req.body.isRon ? "RON" : "ORD"}-${Date.now()}`;
+    const initialStatus = "Pending Admin Review";
+
+    const order = await OrderModel.create({
+      id: orderId,
+      clientUserId: client.id,
+      clientEmail: client.email,
+      clientName: client.primaryContact?.name || client.name || client.email,
+      clientCompany: client.organization?.companyName || client.company || "",
+      vendorCode: req.body.vendorCode,
+      serviceType: req.body.serviceType,
+      signerFirstName: req.body.signerFirstName,
+      signerLastName: req.body.signerLastName,
+      signerName,
+      signerPhone: req.body.signerPhone,
+      signerEmail: req.body.signerEmail,
+      hasSecondarySigner: Boolean(req.body.hasSecondarySigner),
+      propertyAddress: req.body.propertyAddress,
+      signingDate: req.body.signingDate,
+      signingTime: req.body.signingTime,
+      feeAmount: req.body.feeAmount,
+      paymentStatus: req.body.paymentStatus || "Pending",
+      paymentMethod: req.body.paymentMethod || "",
+      dueDate: req.body.dueDate || "",
+      paidDate: req.body.paidDate || "",
+      paymentNotes: req.body.paymentNotes || "",
+      paperSize: req.body.paperSize || "Letter",
+      preferredInk: req.body.preferredInk || "Black",
+      estimatedPages: req.body.estimatedPages || "",
+      isRon: Boolean(req.body.isRon),
+      specialInstructions: req.body.specialInstructions || "",
+      status: initialStatus,
+      notary: "Unassigned",
+      documents: [],
+      statusHistory: [
+        createStatusHistoryEntry(
+          initialStatus,
+          { id: req.admin.id, role: "admin" },
+          "Order created by admin on behalf of client."
+        ),
+      ],
+    });
+
+    await syncPaymentFromOrder(order.toObject());
+    emitOrderStatusUpdated(order.toObject(), {
+      previousStatus: null,
+      changedBy: req.admin.id,
+      event: "created",
+    });
+    await createAuditLog({
+      action: "order.created",
+      entityType: "order",
+      entityId: order.id,
+      title: "Order created by admin",
+      summary: `${req.admin.name || req.admin.email} created an order for ${
+        order.clientCompany || order.clientName
+      }.`,
+      actor: { id: req.admin.id, type: "admin", record: req.admin },
+      metadata: { serviceType: order.serviceType, feeAmount: order.feeAmount, clientUserId: client.id },
+    });
+
+    const reloaded = await OrderModel.findOne({ id: order.id }).lean();
+    return ok(
+      res,
+      { orderId: order.id, order: serializeAdminOrder(reloaded) },
+      "Order created successfully.",
+      201
+    );
+  }
+);
+
 ordersRouter.get(
   "/admin/orders/:id",
   requireAdminAuth,

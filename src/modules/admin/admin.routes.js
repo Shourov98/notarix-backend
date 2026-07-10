@@ -129,6 +129,87 @@ adminRouter.get("/admin/dashboard/stats", requireAdminAuth, async (req, res) => 
   return ok(res, summarizeAdminConsole(snapshot, req.admin).metrics);
 });
 
+// Time-series dataset for the admin dashboard trend chart. Returns
+// orders and revenue grouped by day for the last `days` days (default 14).
+adminRouter.get("/admin/dashboard/timeseries", requireAdminAuth, async (req, res) => {
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 14, 1), 60);
+  const since = new Date();
+  since.setUTCHours(0, 0, 0, 0);
+  since.setUTCDate(since.getUTCDate() - (days - 1));
+
+  const orders = await OrderModel.find({ createdAt: { $gte: since } })
+    .select({ createdAt: 1, feeAmount: 1, status: 1 })
+    .lean();
+
+  const payments = await PaymentModel.find({ createdAt: { $gte: since } })
+    .select({ createdAt: 1, amount: 1, status: 1, direction: 1 })
+    .lean();
+
+  const dayKey = (value) => {
+    const date = new Date(value);
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(
+      date.getUTCDate()
+    ).padStart(2, "0")}`;
+  };
+
+  // Seed every day in the window so the chart shows zeros for empty days.
+  const buckets = new Map();
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const date = new Date(since);
+    date.setUTCDate(date.getUTCDate() + offset);
+    const key = dayKey(date);
+    buckets.set(key, {
+      key,
+      label: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      orders: 0,
+      completedOrders: 0,
+      revenue: 0,
+      payouts: 0,
+    });
+  }
+
+  orders.forEach((order) => {
+    const bucket = buckets.get(dayKey(order.createdAt));
+    if (!bucket) return;
+    bucket.orders += 1;
+    if (order.status === "Completed") {
+      bucket.completedOrders += 1;
+      bucket.revenue += Number(order.feeAmount || 0);
+    }
+  });
+
+  payments.forEach((payment) => {
+    const bucket = buckets.get(dayKey(payment.createdAt));
+    if (!bucket) return;
+    if (payment.direction === "outbound") {
+      bucket.payouts += Number(payment.amount || 0);
+    } else if (payment.direction === "inbound" && payment.status === "Paid") {
+      bucket.revenue += Number(payment.amount || 0);
+    }
+  });
+
+  const series = Array.from(buckets.values());
+  const totals = series.reduce(
+    (acc, entry) => {
+      acc.orders += entry.orders;
+      acc.revenue += entry.revenue;
+      acc.payouts += entry.payouts;
+      acc.completedOrders += entry.completedOrders;
+      return acc;
+    },
+    { orders: 0, revenue: 0, payouts: 0, completedOrders: 0 }
+  );
+
+  return ok(res, {
+    days,
+    series,
+    totals: {
+      ...totals,
+      netProfit: totals.revenue - totals.payouts,
+    },
+  });
+});
+
 adminRouter.get("/admin/support/tickets", requireAdminAuth, async (req, res) => {
   const { status, search } = req.query;
   const tickets = adminStore.listSupportTickets({ status, search });

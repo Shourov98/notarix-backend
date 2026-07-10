@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuthenticatedActor } from "../../shared/http/auth-middleware.js";
+import {
+  requireAdminAuth,
+  requireAuthenticatedActor,
+} from "../../shared/http/auth-middleware.js";
 import { fail, ok } from "../../shared/http/respond.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { storeUploadedFile } from "../../shared/storage/cloudinary.js";
@@ -9,8 +12,10 @@ import { upload } from "../../shared/storage/upload.js";
 import { emitConversationMessage } from "../../shared/realtime/socket.js";
 import { ConversationModel } from "./conversation.model.js";
 import { MessageModel } from "./message.model.js";
+import { UserModel } from "../users/user.model.js";
 import {
   createMessage,
+  ensureDirectConversation,
   serializeConversation,
   serializeMessage,
 } from "./messages.service.js";
@@ -233,5 +238,41 @@ messagesRouter.patch(
         ).lean();
 
     return ok(res, serializeMessage(updated, req.actor.id), "Message marked as read.");
+  }
+);
+
+// Find or create a direct (non-order) conversation between the authenticated
+// admin and a specific user. Used by the admin user-profile "Send Message"
+// button to redirect the admin straight to the in-app conversation.
+const adminDirectConversationSchema = z.object({
+  body: z.object({
+    userId: z.string().min(1),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({}).passthrough(),
+});
+
+messagesRouter.post(
+  "/admin/conversations/direct",
+  requireAdminAuth,
+  validate(adminDirectConversationSchema),
+  async (req, res) => {
+    const userId = String(req.body.userId || "").trim();
+    const user = await UserModel.findOne({ id: userId }).lean();
+    if (!user) {
+      return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+    }
+
+    const conversation = await ensureDirectConversation({
+      admin: {
+        id: req.admin.id,
+        role: req.admin.role || "admin",
+        name: req.admin.name || req.admin.email,
+        email: req.admin.email,
+      },
+      user,
+    });
+
+    return ok(res, await serializeConversation(conversation, req.admin.id));
   }
 );

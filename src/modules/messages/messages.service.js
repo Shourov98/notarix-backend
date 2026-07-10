@@ -179,3 +179,66 @@ export const createMessage = async ({ conversation, actor, body = "", attachment
 
   return MessageModel.findOne({ id: message.id }).lean();
 };
+
+// Find or create a direct (non-order) conversation between an admin and a user.
+// Returns the conversation document.
+export const ensureDirectConversation = async ({ admin, user }) => {
+  if (!admin?.id || !user?.id) {
+    throw new Error("Both admin and user are required to start a conversation.");
+  }
+
+  const adminParticipant = {
+    actorId: admin.id,
+    actorType: "admin",
+    role: admin.role || "admin",
+    name: admin.name || admin.email || admin.id,
+    email: (admin.email || "").toLowerCase(),
+  };
+
+  const userParticipant = {
+    actorId: user.id,
+    actorType: "user",
+    role: user.role || "User",
+    name:
+      user.primaryContact?.name ||
+      user.name ||
+      user.email ||
+      user.id,
+    email: (user.email || "").toLowerCase(),
+  };
+
+  // Look for an existing direct conversation that has exactly these two
+  // participants (admin + user).
+  const existing = await ConversationModel.findOne({
+    kind: "direct",
+    participants: {
+      $all: [
+        { $elemMatch: { actorId: adminParticipant.actorId, actorType: "admin" } },
+        { $elemMatch: { actorId: userParticipant.actorId, actorType: "user" } },
+      ],
+    },
+  }).lean();
+
+  if (existing) {
+    return existing;
+  }
+
+  const conversation = {
+    id: `conv-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+    orderId: null,
+    kind: "direct",
+    title:
+      user.organization?.companyName ||
+      user.company ||
+      user.primaryContact?.name ||
+      user.name ||
+      user.email ||
+      user.id,
+    participants: [adminParticipant, userParticipant],
+    lastMessageAt: null,
+    lastMessagePreview: "",
+  };
+
+  await ConversationModel.create(conversation);
+  return ConversationModel.findOne({ id: conversation.id }).lean();
+};
