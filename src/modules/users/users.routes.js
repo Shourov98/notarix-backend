@@ -150,6 +150,71 @@ const userDocumentStatusSchema = z.object({
   }),
 });
 
+// Allowed editable fields for the admin "Edit User" action. We intentionally
+// scope this to safe profile data — credentials, role, and id stay immutable.
+const USER_STATUS_VALUES = ["Active", "Pending", "Suspended", "Inactive"];
+const optionalAddressSchema = z
+  .object({
+    line1: z.string().min(2).optional(),
+    line2: z.string().optional(),
+    city: z.string().min(2).optional(),
+    state: z.string().min(2).optional(),
+    zip: z.string().min(2).optional(),
+    country: z.string().optional(),
+  })
+  .optional();
+const optionalContactSchema = z
+  .object({
+    name: z.string().min(2).optional(),
+    email: z.string().email().optional().or(z.literal("")),
+    phone: z.string().min(7).optional(),
+  })
+  .optional();
+const optionalOrganizationSchema = z
+  .object({
+    companyName: z.string().min(2).optional(),
+    companyType: z.string().optional(),
+    website: z.string().optional(),
+    mainOfficePhone: z.string().optional(),
+  })
+  .optional();
+const optionalPersonalInfoSchema = z
+  .object({
+    fullName: z.string().min(2).optional(),
+    email: z.string().email().optional().or(z.literal("")),
+    phone: z.string().min(7).optional(),
+  })
+  .optional();
+const optionalCommissionSchema = z
+  .object({
+    number: z.string().min(2).optional(),
+    state: z.string().min(2).optional(),
+    expirationDate: z.string().min(2).optional(),
+    travelRadius: z.string().optional(),
+    coverageAreas: z.string().optional(),
+  })
+  .optional();
+
+const userUpdateSchema = z.object({
+  body: z.object({
+    name: z.string().min(2).optional(),
+    status: z.enum(USER_STATUS_VALUES).optional(),
+    company: z.string().optional(),
+    area: z.string().optional(),
+    avatarTone: z.string().optional(),
+    organization: optionalOrganizationSchema,
+    address: optionalAddressSchema,
+    primaryContact: optionalContactSchema,
+    secondaryContact: optionalContactSchema,
+    personalInfo: optionalPersonalInfoSchema,
+    commission: optionalCommissionSchema,
+    ronEligible: z.boolean().optional(),
+    specialties: z.array(z.string()).optional(),
+  }),
+  query: z.object({}).passthrough(),
+  params: z.object({ id: z.string().min(1) }),
+});
+
 const bankInfoSchema = z.object({
   body: z.object({
     bankName: z.string().min(2),
@@ -829,6 +894,83 @@ usersRouter.patch("/admin/users/:id/status", requireAdminAuth, async (req, res) 
 
   return ok(res, updated, "User status updated.");
 });
+
+// Update editable profile fields for a user (admin-driven). Credentials, role,
+// and id are immutable here; everything else uses dot-notation merging so
+// callers can patch just the fields they care about.
+usersRouter.patch(
+  "/admin/users/:id",
+  requireAdminAuth,
+  validate(userUpdateSchema),
+  async (req, res) => {
+    const existing = await UserModel.findOne({ id: req.params.id }).lean();
+    if (!existing) {
+      return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+    }
+
+    const setFields = {};
+    const {
+      name,
+      status,
+      company,
+      area,
+      avatarTone,
+      organization,
+      address,
+      primaryContact,
+      secondaryContact,
+      personalInfo,
+      commission,
+      ronEligible,
+      specialties,
+    } = req.body || {};
+
+    if (typeof name === "string") setFields.name = name.trim();
+    if (typeof status === "string") setFields.status = status;
+    if (typeof company === "string") setFields.company = company;
+    if (typeof area === "string") setFields.area = area;
+    if (typeof avatarTone === "string") setFields.avatarTone = avatarTone;
+    if (Array.isArray(specialties)) setFields.specialties = specialties;
+    if (typeof ronEligible === "boolean") setFields.ronEligible = ronEligible;
+
+    const mergeSubdoc = (key, next) => {
+      if (!next) return;
+      setFields[key] = { ...(existing[key] || {}), ...next };
+    };
+    mergeSubdoc("organization", organization);
+    mergeSubdoc("address", address);
+    mergeSubdoc("primaryContact", primaryContact);
+    mergeSubdoc("secondaryContact", secondaryContact);
+    mergeSubdoc("personalInfo", personalInfo);
+    mergeSubdoc("commission", commission);
+
+    if (Object.keys(setFields).length === 0) {
+      return ok(res, serializeUser(existing), "No changes to apply.");
+    }
+
+    const updated = await UserModel.findOneAndUpdate(
+      { id: req.params.id },
+      { $set: setFields },
+      { new: true }
+    ).lean();
+
+    if (!updated) {
+      return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+    }
+
+    await createAuditLog({
+      action: "user.updated",
+      entityType: "user",
+      entityId: updated.id,
+      title: "User profile updated",
+      summary: `${updated.name || updated.email} was updated by admin.`,
+      actor: req.admin,
+      metadata: { fields: Object.keys(setFields) },
+    });
+
+    return ok(res, serializeUser(updated), "User updated successfully.");
+  }
+);
 
 usersRouter.post(
   "/users/bank-info",
