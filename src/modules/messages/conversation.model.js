@@ -7,6 +7,10 @@ const participantSchema = new mongoose.Schema(
     role: { type: String, required: true },
     name: { type: String, required: true },
     email: { type: String, required: true, lowercase: true },
+    // When this participant joined the conversation. Used to scope message
+    // visibility per participant so a notary added later only sees messages
+    // sent after they joined.
+    joinedAt: { type: Date, default: null },
   },
   { _id: false }
 );

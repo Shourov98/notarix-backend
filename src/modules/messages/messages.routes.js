@@ -16,6 +16,7 @@ import { UserModel } from "../users/user.model.js";
 import {
   createMessage,
   ensureDirectConversation,
+  ensureOrderConversation,
   serializeConversation,
   serializeMessage,
 } from "./messages.service.js";
@@ -106,12 +107,54 @@ messagesRouter.get(
   requireAuthenticatedActor,
   validate(orderConversationSchema),
   async (req, res) => {
-    const conversation = await ConversationModel.findOne({
+    const { OrderModel } = await import("../orders/order.model.js");
+
+    let conversation = await ConversationModel.findOne({
       orderId: req.params.orderId,
     }).lean();
 
+    // Lazy-create the order conversation if it doesn't exist yet. The first
+    // authorized viewer (admin or client) becomes a participant. The notary
+    // (if any) is also added as a participant only if already assigned.
     if (!conversation) {
-      return fail(res, 404, "CONVERSATION_NOT_FOUND", "Conversation not found.");
+      const order = await OrderModel.findOne({ id: req.params.orderId }).lean();
+      if (!order) {
+        return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
+      }
+
+      // Only admin or the order's client can open the conversation before a
+      // notary is assigned.
+      const isAdmin = req.actor.type === "admin";
+      const isOrderClient =
+        req.actor.type === "user" &&
+        req.actor.role === "Client" &&
+        (req.actor.id === order.clientUserId || req.actor.record?.id === order.clientUserId);
+      if (!isAdmin && !isOrderClient) {
+        return fail(res, 403, "FORBIDDEN", "You do not have access to this conversation.");
+      }
+
+      const client = await UserModel.findOne({ id: order.clientUserId }).lean();
+      const notary = order.notaryId
+        ? await UserModel.findOne({ id: order.notaryId }).lean()
+        : null;
+
+      conversation = await ensureOrderConversation({
+        order,
+        admin: isAdmin
+          ? {
+              id: req.actor.id,
+              type: "admin",
+              role: req.actor.role || "Admin",
+              record: { id: req.actor.id, name: req.actor.name, email: req.actor.email },
+            }
+          : null,
+        client: client
+          ? { id: client.id, type: "user", role: client.role, record: client }
+          : null,
+        notary: notary
+          ? { id: notary.id, type: "user", role: notary.role, record: notary }
+          : null,
+      });
     }
 
     if (!actorHasConversationAccess(conversation, req.actor)) {
@@ -132,7 +175,23 @@ messagesRouter.get(
       return fail(res, result.error[0] === "FORBIDDEN" ? 403 : 404, result.error[0], result.error[1]);
     }
 
-    const messages = await MessageModel.find({ conversationId: req.params.id })
+    // Scope message visibility per participant. A participant only sees
+    // messages sent at or after their `joinedAt` timestamp. Admins and the
+    // order's client see all messages because they were part of the
+    // conversation from the start (their joinedAt is set when the conversation
+    // is first created).
+    const me = (result.conversation.participants || []).find(
+      (participant) =>
+        participant.actorId === req.actor.id && participant.actorType === req.actor.type
+    );
+    const visibilityCutoff = me?.joinedAt ? new Date(me.joinedAt) : null;
+
+    const messageQuery = { conversationId: req.params.id };
+    if (visibilityCutoff) {
+      messageQuery.createdAt = { $gte: visibilityCutoff };
+    }
+
+    const messages = await MessageModel.find(messageQuery)
       .sort({ createdAt: 1 })
       .lean();
 

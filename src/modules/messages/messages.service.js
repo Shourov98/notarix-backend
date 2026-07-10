@@ -3,24 +3,38 @@ import { ConversationModel } from "./conversation.model.js";
 import { MessageModel } from "./message.model.js";
 import { normalizeCloudinaryUrl } from "../../shared/storage/cloudinary.js";
 
-const toParticipant = (actor) => ({
-  actorId: actor.id,
-  actorType: actor.type,
-  role: actor.role,
-  name: actor.record?.name || actor.record?.primaryContact?.name || actor.id,
-  email: actor.record?.email || "",
-});
+const toParticipant = (actor, joinedAt = null) => {
+  if (!actor) return null;
+  const joined = joinedAt instanceof Date
+    ? joinedAt
+    : joinedAt
+      ? new Date(joinedAt)
+      : new Date();
+  return {
+    actorId: actor.id,
+    actorType: actor.type,
+    role: actor.role,
+    name: actor.record?.name || actor.record?.primaryContact?.name || actor.id,
+    email: actor.record?.email || "",
+    joinedAt: joined,
+  };
+};
 
-export const ensureOrderConversation = async ({ order, admin, client, notary }) => {
-  const participants = [admin, client, notary]
-    .filter(Boolean)
-    .map(toParticipant);
-
+// Find or create the order conversation. When called without a notary, this
+// creates a conversation with just admin + client so the message thread is
+// usable before a notary is assigned. When called again later with a notary,
+// the notary is added as a new participant (with `joinedAt = now`) so they
+// only see messages sent after they joined.
+export const ensureOrderConversation = async ({ order, admin, client, notary, joinedAt }) => {
   const title = `${order.clientCompany || order.clientName} · ${order.signerName}`;
 
   const existing = await ConversationModel.findOne({ orderId: order.id }).lean();
 
   if (!existing) {
+    const participants = [admin, client, notary]
+      .filter(Boolean)
+      .map((actor) => toParticipant(actor, joinedAt || new Date()));
+
     const conversation = {
       id: `conv-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
       orderId: order.id,
@@ -31,16 +45,42 @@ export const ensureOrderConversation = async ({ order, admin, client, notary }) 
     };
 
     await ConversationModel.create(conversation);
-    return conversation;
+    return ConversationModel.findOne({ orderId: order.id }).lean();
   }
 
-  const nextParticipants = [...participants];
+  // Reconcile participants. Preserve existing `joinedAt` for participants that
+  // are already in the conversation. New participants get `joinedAt = now`
+  // (unless explicitly provided) so they only see future messages.
+  const existingById = new Map(
+    (existing.participants || []).map((p) => [`${p.actorType}:${p.actorId}`, p])
+  );
+
+  const reconciled = [admin, client, notary]
+    .filter(Boolean)
+    .map((actor) => {
+      const key = `${actor.type}:${actor.id}`;
+      const previous = existingById.get(key);
+      if (previous) {
+        // Already in the conversation; preserve original join time.
+        return {
+          actorId: actor.id,
+          actorType: actor.type,
+          role: actor.role,
+          name: actor.record?.name || actor.record?.primaryContact?.name || actor.id,
+          email: actor.record?.email || "",
+          joinedAt: previous.joinedAt || new Date(),
+        };
+      }
+      // New participant — use explicit joinedAt if provided, otherwise now.
+      return toParticipant(actor, joinedAt || new Date());
+    });
+
   await ConversationModel.updateOne(
     { orderId: order.id },
     {
       $set: {
         title,
-        participants: nextParticipants,
+        participants: reconciled,
       },
     }
   );
@@ -187,12 +227,15 @@ export const ensureDirectConversation = async ({ admin, user }) => {
     throw new Error("Both admin and user are required to start a conversation.");
   }
 
+  const now = new Date();
+
   const adminParticipant = {
     actorId: admin.id,
     actorType: "admin",
     role: admin.role || "admin",
     name: admin.name || admin.email || admin.id,
     email: (admin.email || "").toLowerCase(),
+    joinedAt: now,
   };
 
   const userParticipant = {
@@ -205,6 +248,7 @@ export const ensureDirectConversation = async ({ admin, user }) => {
       user.email ||
       user.id,
     email: (user.email || "").toLowerCase(),
+    joinedAt: now,
   };
 
   // Look for an existing direct conversation that has exactly these two

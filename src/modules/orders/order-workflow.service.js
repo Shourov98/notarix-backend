@@ -40,9 +40,10 @@ export const serializeStatus = (status) => {
   switch (status) {
     case "Pending Admin Review":
     case "Accepted By Admin":
-    case "Rejected By Admin":
     case "Needs Reassignment":
       return "Pending";
+    case "Rejected By Admin":
+      return "Rejected";
     case "Notary Assigned":
     case "Accepted By Notary":
       return "Assigned";
