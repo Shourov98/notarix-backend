@@ -217,9 +217,18 @@ adminRouter.get("/admin/dashboard/timeseries", requireAdminAuth, async (req, res
 });
 
 adminRouter.get("/admin/support/tickets", requireAdminAuth, async (req, res) => {
-  const { status, search } = req.query;
-  const tickets = adminStore.listSupportTickets({ status, search });
-  return ok(res, tickets, "Support tickets fetched.");
+  const { status, search, page, pageSize } = req.query;
+  const result = adminStore.listSupportTickets({
+    status,
+    search,
+    page: parseInt(page, 10) || 1,
+    pageSize: Math.min(Math.max(parseInt(pageSize, 10) || 25, 1), 100),
+  });
+  return ok(res, result, "Support tickets fetched.");
+});
+
+adminRouter.get("/admin/support/tickets/counts", requireAdminAuth, async (_req, res) => {
+  return ok(res, adminStore.countSupportTickets(), "Support ticket counts fetched.");
 });
 
 adminRouter.get("/admin/support/tickets/:id", requireAdminAuth, async (req, res) => {
