@@ -6,7 +6,10 @@ const participantSchema = new mongoose.Schema(
     actorType: { type: String, enum: ["admin", "user"], required: true },
     role: { type: String, required: true },
     name: { type: String, required: true },
-    email: { type: String, required: true, lowercase: true },
+    // Email is optional — some participant records may not have one (system
+    // admins, automated bots, etc.). Defaults to empty string so Mongoose
+    // doesn't reject the document.
+    email: { type: String, default: "", lowercase: true },
     // When this participant joined the conversation. Used to scope message
     // visibility per participant so a notary added later only sees messages
     // sent after they joined.
@@ -22,7 +25,7 @@ const conversationSchema = new mongoose.Schema(
     // Direct admin ↔ user chats (no order context) leave it null. The partial
     // unique index declared below enforces "one conversation per order" only
     // when orderId is set.
-    orderId: { type: String, default: null, index: true },
+    orderId: { type: String, default: null },
     kind: { type: String, enum: ["order", "direct"], default: "order", index: true },
     title: { type: String, required: true },
     participants: { type: [participantSchema], default: [] },
