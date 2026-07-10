@@ -89,7 +89,10 @@ messagesRouter.get(
       .sort({ lastMessageAt: -1, createdAt: -1 })
       .lean();
 
-    return ok(res, conversations.map((item) => serializeConversation(item, req.actor.id)));
+    return ok(
+      res,
+      await Promise.all(conversations.map((item) => serializeConversation(item, req.actor.id)))
+    );
   }
 );
 
@@ -110,7 +113,7 @@ messagesRouter.get(
       return fail(res, 403, "FORBIDDEN", "You do not have access to this conversation.");
     }
 
-    return ok(res, serializeConversation(conversation, req.actor.id));
+    return ok(res, await serializeConversation(conversation, req.actor.id));
   }
 );
 
@@ -129,7 +132,7 @@ messagesRouter.get(
       .lean();
 
     return ok(res, {
-      conversation: serializeConversation(result.conversation, req.actor.id),
+      conversation: await serializeConversation(result.conversation, req.actor.id),
       messages: messages.map((message) => serializeMessage(message, req.actor.id)),
     });
   }

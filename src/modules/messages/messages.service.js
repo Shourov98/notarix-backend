@@ -64,10 +64,18 @@ export const touchConversationPreview = async ({
   );
 };
 
-export const serializeConversation = (conversation, actorId) => {
+export const serializeConversation = async (conversation, actorId) => {
   const counterpart = (conversation.participants || []).find(
     (participant) => participant.actorId !== actorId
   ) || conversation.participants?.[0];
+
+  // Count unread messages for this actor in the conversation. A message is
+  // unread if it was not sent by the actor and they don't have a read receipt.
+  const unreadCount = await MessageModel.countDocuments({
+    conversationId: conversation.id,
+    senderId: { $ne: actorId },
+    "readBy.actorId": { $ne: actorId },
+  });
 
   return {
     id: conversation.id,
@@ -75,6 +83,7 @@ export const serializeConversation = (conversation, actorId) => {
     title: conversation.title,
     lastMessageAt: conversation.lastMessageAt,
     lastMessagePreview: conversation.lastMessagePreview,
+    unreadCount,
     participants: conversation.participants || [],
     counterpart: counterpart
       ? {
