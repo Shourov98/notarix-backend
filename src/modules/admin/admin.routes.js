@@ -33,6 +33,8 @@ const serializeAdminOrder = (order) => ({
     .filter(Boolean)
     .join(", "),
   schedule: `${order.signingDate} ${order.signingTime}`.trim(),
+  signingDate: order.signingDate || "",
+  signingTime: order.signingTime || "",
   notary: order.notary || "Unassigned",
   notaryId: order.notaryId || null,
   status:
@@ -47,6 +49,10 @@ const serializeAdminOrder = (order) => ({
   workflowStatus: order.status,
   type: order.isRon ? "RON" : "In-Person",
   fee: `$${Number(order.feeAmount || 0).toFixed(2)}`,
+  feeAmount: Number(order.feeAmount || 0),
+  notaryOfferAmount: Number(order.notaryOfferAmount || 0),
+  payoutReleaseDays:
+    typeof order.payoutReleaseDays === "number" ? order.payoutReleaseDays : null,
 });
 
 const buildNotaryRows = (users, orders) =>
