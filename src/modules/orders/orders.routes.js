@@ -196,7 +196,69 @@ const serializeAdminOrder = (order) => ({
   createdAt: order.createdAt,
 });
 
-const serializeAdminOrderDetail = (order) => ({
+const CLIENT_STATUS_STEP_ORDER = [
+  { key: "created", label: "Created" },
+  { key: "submitted", label: "Submitted" },
+  { key: "admin_review", label: "Admin Review" },
+  { key: "negotiation", label: "Get rid of negotiation" },
+  { key: "assigned", label: "Assigned" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "completed", label: "Completed" },
+];
+
+const buildClientStatusSteps = (order) => {
+  const reached = new Set(["created", "submitted", "admin_review", "negotiation"]);
+  const status = order?.status;
+  if (status === "Notary Assigned" || status === "Accepted By Notary") {
+    reached.add("assigned");
+  }
+  if (status === "In Progress") {
+    reached.add("assigned");
+    reached.add("in_progress");
+  }
+  if (status === "Completed") {
+    reached.add("assigned");
+    reached.add("in_progress");
+    reached.add("completed");
+  }
+  let currentIdx = -1;
+  CLIENT_STATUS_STEP_ORDER.forEach((step, idx) => {
+    if (reached.has(step.key)) currentIdx = idx;
+  });
+  return CLIENT_STATUS_STEP_ORDER.map((step, idx) => ({
+    key: step.key,
+    label: step.label,
+    number: idx + 1,
+    reached: reached.has(step.key),
+    current: idx === currentIdx,
+  }));
+};
+
+const buildClientFees = (order) => {
+  const service = Number(order?.feeAmount || 0);
+  const remote = Number(order?.remoteConvenienceFee || 0);
+  return {
+    service,
+    remote,
+    total: service + remote,
+  };
+};
+
+const buildClientNotaryDetails = (order, notaryUser) => {
+  if (!order?.notaryId || !notaryUser) return null;
+  return {
+    id: notaryUser.id || null,
+    name: notaryUser.name || order.notary || "Assigned Notary",
+    avatar: notaryUser.avatar || null,
+    avatarTone: notaryUser.avatarTone || "",
+    status: notaryUser.status || "Active",
+    ronEligible: Boolean(notaryUser.ronEligible),
+    email: notaryUser.email || "",
+    phone: notaryUser.phone || "",
+  };
+};
+
+const serializeAdminOrderDetail = (order, notaryUser = null) => ({
   ...serializeAdminOrder(order),
   vendorCode: order.vendorCode,
   signerFirstName: order.signerFirstName,
@@ -270,6 +332,9 @@ const serializeAdminOrderDetail = (order) => ({
     };
   }),
   timeline: buildTimeline(order),
+  fees: buildClientFees(order),
+  notaryDetails: buildClientNotaryDetails(order, notaryUser),
+  statusSteps: buildClientStatusSteps(order),
 });
 
 const serializeClientOrder = (order) => ({
@@ -798,7 +863,11 @@ ordersRouter.get(
       return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
     }
 
-    return ok(res, serializeAdminOrderDetail(order));
+    const notaryUser = order.notaryId
+      ? await UserModel.findOne({ id: order.notaryId }).lean()
+      : null;
+
+    return ok(res, serializeAdminOrderDetail(order, notaryUser));
   }
 );
 

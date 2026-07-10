@@ -56,6 +56,7 @@ const orderSchema = new mongoose.Schema(
     signingDate: { type: String, required: true },
     signingTime: { type: String, required: true },
     feeAmount: { type: Number, required: true },
+    remoteConvenienceFee: { type: Number, default: 0 },
     paymentStatus: { type: String, default: "Pending" },
     paymentMethod: { type: String, default: "" },
     dueDate: { type: String, default: "" },
