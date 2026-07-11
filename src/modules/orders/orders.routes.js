@@ -31,6 +31,7 @@ import {
   ORDER_STATUSES,
   canTransitionOrderStatus,
   getOrderTransitionError,
+  isTerminalOrderStatus,
   requiresCompletedDocumentsForCompletion,
   serializeStatus,
 } from "./order-workflow.service.js";
@@ -200,7 +201,7 @@ const CLIENT_STATUS_STEP_ORDER = [
   { key: "created", label: "Created" },
   { key: "submitted", label: "Submitted" },
   { key: "admin_review", label: "Admin Review" },
-  { key: "negotiation", label: "Get rid of negotiation" },
+  { key: "negotiation", label: "Under Review" },
   { key: "assigned", label: "Assigned" },
   { key: "in_progress", label: "In Progress" },
   { key: "completed", label: "Completed" },
@@ -1612,12 +1613,10 @@ ordersRouter.patch(
       return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
     }
     if (!canTransitionOrderStatus(current.status, "Needs Reassignment")) {
-      return fail(
-        res,
-        400,
-        "INVALID_STATUS",
-        `This order can't be reassigned while it's in "${current.status}". Please cancel it first if you need to change the notary.`
-      );
+      const message = isTerminalOrderStatus(current.status)
+        ? `This order can't be reassigned because it's already ${current.status}. To make changes, please create a new order.`
+        : `This order can't be reassigned while it's in "${current.status}".`;
+      return fail(res, 400, "INVALID_STATUS", message);
     }
 
     const notary = await UserModel.findOne({
