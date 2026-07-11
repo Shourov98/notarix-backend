@@ -1611,12 +1611,12 @@ ordersRouter.patch(
     if (!current) {
       return fail(res, 404, "ORDER_NOT_FOUND", "Order not found.");
     }
-    if (current.status !== "Needs Reassignment") {
+    if (!canTransitionOrderStatus(current.status, "Needs Reassignment")) {
       return fail(
         res,
         400,
         "INVALID_STATUS",
-        'Only orders in status "Needs Reassignment" can be reassigned.'
+        `This order can't be reassigned while it's in "${current.status}". Please cancel it first if you need to change the notary.`
       );
     }
 
@@ -1632,11 +1632,14 @@ ordersRouter.patch(
       return fail(res, 400, "NOTARY_UNAVAILABLE", "Suspended notaries cannot be assigned.");
     }
 
-    const updated = await updateOrderStatus({
+    const needsReassignment = await updateOrderStatus({
       id: req.params.id,
       status: "Needs Reassignment",
       actor: req.admin,
-      note: `Reassignment initiated to ${notary.name}.`,
+      note:
+        current.status === "Needs Reassignment"
+          ? `Reassignment initiated to ${notary.name}.`
+          : `Reassignment initiated from "${current.status}" to ${notary.name}.`,
       extraSet: {
         notaryId: notary.id,
         notary: notary.name,
@@ -1651,6 +1654,7 @@ ordersRouter.patch(
         assignmentNotes: req.body.assignmentNotes || "",
       },
     });
+    const updated = needsReassignment;
 
     const assigned = await updateOrderStatus({
       id: req.params.id,
